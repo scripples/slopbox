@@ -84,16 +84,22 @@ impl HetznerProvider {
     }
 
     /// Generate cloud-init user data for setting up the agent.
+    ///
+    /// Works with both fresh Ubuntu images (installs Docker + OpenClaw) and
+    /// pre-baked snapshots (skips install if already present). Writes config
+    /// files, env vars, and starts the OpenClaw gateway as a systemd service.
     fn cloud_init_user_data(spec: &VpsSpec) -> String {
         let mut env_lines = String::new();
         for (k, v) in &spec.env {
-            env_lines.push_str(&format!("echo '{k}={v}' >> /etc/cludbox/env\n"));
+            // Shell-escape single quotes in values
+            let escaped = v.replace('\'', "'\\''");
+            env_lines.push_str(&format!("  - echo 'export {k}={escaped}' >> /etc/slopbox/env\n"));
         }
 
         let mut file_lines = String::new();
         for f in &spec.files {
             file_lines.push_str(&format!(
-                "mkdir -p $(dirname {})\ncat > {} << 'CLUDBOX_EOF'\n{}\nCLUDBOX_EOF\n",
+                "  - mkdir -p $(dirname '{}')\n  - |\n    cat > '{}' << 'SLOPBOX_EOF'\n{}\n    SLOPBOX_EOF\n",
                 f.guest_path, f.guest_path, f.raw_value
             ));
         }
@@ -101,20 +107,64 @@ impl HetznerProvider {
         format!(
             r#"#cloud-config
 runcmd:
-  - mkdir -p /etc/cludbox
-  - {env_lines}
-  - {file_lines}
-  - systemctl start cludbox-agent
+  # Install Docker if not already present (snapshot may have it)
+  - |
+    if ! command -v docker &>/dev/null; then
+      apt-get update
+      apt-get install -y docker.io
+      systemctl enable docker
+      systemctl start docker
+    fi
+  # Install Node.js if not already present
+  - |
+    if ! command -v node &>/dev/null; then
+      curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+      apt-get install -y nodejs
+    fi
+  # Install OpenClaw if not already present
+  - |
+    if ! command -v openclaw &>/dev/null; then
+      npm install -g @anthropic/openclaw
+    fi
+  # Write env vars
+  - mkdir -p /etc/slopbox
+{env_lines}  # Write config files
+{file_lines}  # Create systemd service for OpenClaw gateway
+  - |
+    cat > /etc/systemd/system/openclaw-gateway.service << 'EOF'
+    [Unit]
+    Description=OpenClaw Gateway
+    After=network.target docker.service
+    Requires=docker.service
+
+    [Service]
+    Type=simple
+    EnvironmentFile=-/etc/slopbox/env
+    ExecStart=/usr/bin/openclaw gateway run
+    Restart=on-failure
+    RestartSec=5
+
+    [Install]
+    WantedBy=multi-user.target
+    EOF
+  - systemctl daemon-reload
+  - systemctl enable openclaw-gateway
+  - systemctl start openclaw-gateway
 "#
         )
     }
 
-    /// Extract the private IP from a server's private_net list.
-    fn private_ip(server: &models::Server) -> Option<String> {
-        server
-            .private_net
-            .first()
-            .and_then(|net| net.ip.clone())
+    /// Extract the best available IP address from a server.
+    ///
+    /// Prefers private IP (Hetzner network) if configured.
+    /// Falls back to public IPv4 for setups without a private network.
+    fn server_address(server: &models::Server) -> Option<String> {
+        // Prefer private IP if a Hetzner network is attached
+        if let Some(ip) = server.private_net.first().and_then(|net| net.ip.clone()) {
+            return Some(ip);
+        }
+        // Fall back to public IPv4
+        server.public_net.ipv4.as_ref().map(|ipv4| ipv4.ip.clone())
     }
 
     fn parse_id(raw: &str) -> Result<i64> {
@@ -167,7 +217,7 @@ impl VpsProvider for HetznerProvider {
         .map_err(|e| Error::HetznerApi(format!("create server: {e}")))?;
 
         let server = resp.server;
-        let address = Self::private_ip(&server);
+        let address = Self::server_address(&server);
 
         info!(server_id = server.id, "hetzner: server created");
 
@@ -241,7 +291,7 @@ impl VpsProvider for HetznerProvider {
             .server
             .ok_or_else(|| Error::HetznerApi("server not found in response".into()))?;
 
-        let address = Self::private_ip(&server);
+        let address = Self::server_address(&server);
 
         Ok(VpsInfo {
             id: VpsId(server.id.to_string()),

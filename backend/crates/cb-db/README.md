@@ -1,6 +1,6 @@
 # cb-db
 
-PostgreSQL models and migrations for the Cludbox control plane.
+PostgreSQL models and migrations for the Slopbox control plane.
 
 ## Purpose
 

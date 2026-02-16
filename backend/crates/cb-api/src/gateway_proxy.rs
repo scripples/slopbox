@@ -16,7 +16,7 @@ use uuid::Uuid;
 
 use cb_db::models::{Agent, Vps, VpsState, VpsUsagePeriod};
 
-use crate::auth::{UserId, authenticate_session_cookie};
+use crate::auth::{UserId, authenticate_gateway_request};
 use crate::error::ApiError;
 use crate::state::AppState;
 
@@ -52,11 +52,11 @@ struct GatewayTarget {
 
 async fn resolve_gateway_target(
     headers: &HeaderMap,
+    query: Option<&str>,
     state: &AppState,
     agent_id: Uuid,
 ) -> Result<GatewayTarget, ApiError> {
-    let user_id = authenticate_session_cookie(headers, &state.db)
-        .await
+    let user_id = authenticate_gateway_request(headers, query, &state.config.jwt_secret)
         .ok_or(ApiError::Unauthorized)?;
 
     let agent = Agent::get_by_id(&state.db, agent_id)
@@ -97,7 +97,7 @@ async fn proxy_http(
     headers: HeaderMap,
     body: Body,
 ) -> Result<Response, ApiError> {
-    let target = resolve_gateway_target(&headers, &state, agent_id).await?;
+    let target = resolve_gateway_target(&headers, None, &state, agent_id).await?;
     let address = target.vps.address.as_deref().unwrap();
 
     // Block POST /tools/invoke
@@ -194,10 +194,29 @@ async fn proxy_http(
 async fn proxy_ws(
     State(state): State<AppState>,
     Path(agent_id): Path<Uuid>,
+    axum::extract::Query(query_params): axum::extract::Query<std::collections::HashMap<String, String>>,
     headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Result<Response, ApiError> {
-    let target = resolve_gateway_target(&headers, &state, agent_id).await?;
+    // Reconstruct query string for JWT extraction
+    let query_string = if query_params.is_empty() {
+        None
+    } else {
+        Some(
+            query_params
+                .iter()
+                .map(|(k, v)| format!("{k}={v}"))
+                .collect::<Vec<_>>()
+                .join("&"),
+        )
+    };
+    let target = resolve_gateway_target(
+        &headers,
+        query_string.as_deref(),
+        &state,
+        agent_id,
+    )
+    .await?;
     let address = target.vps.address.clone().unwrap();
     let gateway_token = target.agent.gateway_token.clone();
     let vps_id = target.vps.id;

@@ -15,7 +15,7 @@
 
 ## Executive Summary
 
-The cb-sidecar is the most security-critical 168 lines in the entire Cludbox platform. It runs as root, outside the Docker sandbox, on each VM. It can write arbitrary files to the VM filesystem and restart the gateway service. It is authenticated only by a static Bearer token over plaintext HTTP. It listens on `0.0.0.0:9090`, reachable from any process on the VM.
+The cb-sidecar is the most security-critical 168 lines in the entire Slopbox platform. It runs as root, outside the Docker sandbox, on each VM. It can write arbitrary files to the VM filesystem and restart the gateway service. It is authenticated only by a static Bearer token over plaintext HTTP. It listens on `0.0.0.0:9090`, reachable from any process on the VM.
 
 **The sidecar is not just an administrative convenience -- it is an escalation primitive.** Any attacker who can reach port 9090 with the correct Bearer token gains root-equivalent write access to the entire VM. And as this analysis will demonstrate, the agent has multiple viable paths to reach the sidecar, even from inside the Docker sandbox configured with `network=none`.
 
@@ -27,13 +27,13 @@ The cb-sidecar is the most security-critical 168 lines in the entire Cludbox pla
 
 ### [SIDE-CRIT-001] Sidecar Reachable from Gateway Process via Loopback -- Agent Sandbox Escape
 
-- **Location**: `/home/mr-idiot/claude/cludbox/backend/crates/cb-sidecar/src/main.rs:159` (bind `0.0.0.0:9090`)
+- **Location**: `/home/mr-idiot/claude/slopbox/backend/crates/cb-sidecar/src/main.rs:159` (bind `0.0.0.0:9090`)
 - **Category**: Sandbox Escape / Privilege Escalation
 - **Description**: The sidecar binds to `0.0.0.0:9090`. The OpenClaw gateway process runs on the same VM, outside the Docker sandbox. The agent executes tools inside a Docker container with `network=none`, but the gateway process itself is unsandboxed. The agent interacts with the gateway via its RPC protocol. If the agent can cause the gateway to make an HTTP request to `127.0.0.1:9090`, the sidecar is directly reachable.
 
 - **Attack Scenario**:
   1. The agent is an AI with tool access. The OpenClaw gateway provides tools like `web_fetch`, `Bash` (if not denied), or custom MCP tools.
-  2. The `tools.deny` list in the default config denies `["gateway", "nodes"]` (see `/home/mr-idiot/claude/cludbox/backend/crates/cb-api/src/openclaw_config.rs:91-93`). However, `web_fetch` and other network tools are NOT denied.
+  2. The `tools.deny` list in the default config denies `["gateway", "nodes"]` (see `/home/mr-idiot/claude/slopbox/backend/crates/cb-api/src/openclaw_config.rs:91-93`). However, `web_fetch` and other network tools are NOT denied.
   3. `web_fetch` (or any HTTP tool) executes **in the gateway process context**, not inside the Docker sandbox. The gateway process has full loopback access.
   4. The agent instructs: "Fetch `http://127.0.0.1:9090/health`" -- this succeeds because the gateway process is not sandboxed at the network level.
   5. The agent confirms the sidecar is alive. Now it needs the Bearer token.
@@ -60,9 +60,9 @@ The cb-sidecar is the most security-critical 168 lines in the entire Cludbox pla
 
 ### [SIDE-CRIT-002] SIDECAR_SECRET Exposed in VM Environment Variables -- Agent Can Read It
 
-- **Location**: `/home/mr-idiot/claude/cludbox/backend/crates/cb-api/src/routes/vps.rs:91-93` (env injection)
+- **Location**: `/home/mr-idiot/claude/slopbox/backend/crates/cb-api/src/routes/vps.rs:91-93` (env injection)
 - **Category**: Secret Exposure / Credential Theft
-- **Description**: The `SIDECAR_SECRET` is injected as an environment variable into the VPS during provisioning. On the VM, this secret is available to **any process** that can read `/proc/1/environ`, `/etc/cludbox/env` (Hetzner), or the environment of any process that inherits it.
+- **Description**: The `SIDECAR_SECRET` is injected as an environment variable into the VPS during provisioning. On the VM, this secret is available to **any process** that can read `/proc/1/environ`, `/etc/slopbox/env` (Hetzner), or the environment of any process that inherits it.
 
 - **Attack Scenario** (continuing from SIDE-CRIT-001):
   1. The agent has already confirmed the sidecar is reachable at `127.0.0.1:9090` via `web_fetch`.
@@ -73,14 +73,14 @@ The cb-sidecar is the most security-critical 168 lines in the entire Cludbox pla
      This fails from inside Docker (PID namespace isolation). But...
   3. The agent uses `web_fetch` to read `http://127.0.0.1:9090/health` (unauthenticated). This proves the sidecar is alive.
   4. The agent can potentially read the environment via the gateway process itself. If OpenClaw has any tool that can read the host process environment, read arbitrary files on the host, or inspect process state, the secret is exposed.
-  5. **Even without reading the env directly**: On Hetzner, the secret is written to `/etc/cludbox/env` via cloud-init (see `hetzner.rs:90`):
+  5. **Even without reading the env directly**: On Hetzner, the secret is written to `/etc/slopbox/env` via cloud-init (see `hetzner.rs:90`):
      ```
-     echo 'SIDECAR_SECRET=<value>' >> /etc/cludbox/env
+     echo 'SIDECAR_SECRET=<value>' >> /etc/slopbox/env
      ```
-     If the Docker container mounts any host path, or if the agent can read host files through any tool that runs in the gateway process (not the container), the file `/etc/cludbox/env` is readable.
+     If the Docker container mounts any host path, or if the agent can read host files through any tool that runs in the gateway process (not the container), the file `/etc/slopbox/env` is readable.
   6. The gateway token itself is also in the same env file and is used for proxy auth. The agent already knows this token (it is part of the proxy authentication it uses for outbound traffic). If the agent can brute-force or side-channel the sidecar secret, the game is over.
 
-- **Key Insight**: The `SIDECAR_SECRET` and `OPENCLAW_GATEWAY_TOKEN` are both injected as env vars in the same `HashMap<String, String>` at `/home/mr-idiot/claude/cludbox/backend/crates/cb-api/src/routes/vps.rs:84-103`. On Hetzner, they are all written to `/etc/cludbox/env` via cloud-init. The gateway process inherits these env vars and passes them to child processes. The Docker sandbox may or may not inherit the full host environment depending on how OpenClaw configures Docker.
+- **Key Insight**: The `SIDECAR_SECRET` and `OPENCLAW_GATEWAY_TOKEN` are both injected as env vars in the same `HashMap<String, String>` at `/home/mr-idiot/claude/slopbox/backend/crates/cb-api/src/routes/vps.rs:84-103`. On Hetzner, they are all written to `/etc/slopbox/env` via cloud-init. The gateway process inherits these env vars and passes them to child processes. The Docker sandbox may or may not inherit the full host environment depending on how OpenClaw configures Docker.
 
 - **Impact**: If the SIDECAR_SECRET is readable by the agent (directly or via any gateway-process-level tool), the agent has full control over the sidecar: arbitrary file writes, config overwrites, and service restarts.
 
@@ -97,7 +97,7 @@ The cb-sidecar is the most security-critical 168 lines in the entire Cludbox pla
   ```
 
 - **Recommendation**:
-  - Do NOT inject `SIDECAR_SECRET` into the general VM environment. Write it to a file readable only by the sidecar process (e.g., `/etc/cludbox/sidecar.secret` with `chmod 600` owned by a dedicated sidecar user).
+  - Do NOT inject `SIDECAR_SECRET` into the general VM environment. Write it to a file readable only by the sidecar process (e.g., `/etc/slopbox/sidecar.secret` with `chmod 600` owned by a dedicated sidecar user).
   - Run the sidecar as a separate user (not root), and ensure the gateway process cannot read the sidecar's secret file.
   - On Hetzner, split the cloud-init so that sidecar-specific secrets are written to a separate file with restricted permissions.
 
@@ -105,7 +105,7 @@ The cb-sidecar is the most security-critical 168 lines in the entire Cludbox pla
 
 ### [SIDE-CRIT-003] PUT /files/{*path} Enables Arbitrary Root-Level File Writes -- Config Rewrite Attack
 
-- **Location**: `/home/mr-idiot/claude/cludbox/backend/crates/cb-sidecar/src/main.rs:79-102`
+- **Location**: `/home/mr-idiot/claude/slopbox/backend/crates/cb-sidecar/src/main.rs:79-102`
 - **Category**: Arbitrary File Write / Sandbox Escape / Privilege Escalation
 - **Description**: The `/files/{*path}` endpoint writes arbitrary bytes to any absolute path on the filesystem. It runs as root. The only validation is rejecting paths containing `..`. This means an authenticated caller can write to:
   - `/root/.openclaw/openclaw.json` -- disable sandbox entirely
@@ -118,7 +118,7 @@ The cb-sidecar is the most security-critical 168 lines in the entire Cludbox pla
 
 - **Attack Scenario** (the full chain from agent to root):
   1. Agent uses `web_fetch` to confirm sidecar at `http://127.0.0.1:9090/health` (SIDE-CRIT-001).
-  2. Agent reads `SIDECAR_SECRET` from gateway env or `/etc/cludbox/env` (SIDE-CRIT-002).
+  2. Agent reads `SIDECAR_SECRET` from gateway env or `/etc/slopbox/env` (SIDE-CRIT-002).
   3. Agent uses `web_fetch` to `PUT http://127.0.0.1:9090/files/root/.openclaw/openclaw.json` with Bearer auth and a modified config:
      ```json
      {
@@ -175,7 +175,7 @@ The cb-sidecar is the most security-critical 168 lines in the entire Cludbox pla
 
 ### [SIDE-CRIT-004] Config Rewrite via Sidecar Disables All Security Controls
 
-- **Location**: `/home/mr-idiot/claude/cludbox/backend/crates/cb-sidecar/src/main.rs:56-75` (PUT /config)
+- **Location**: `/home/mr-idiot/claude/slopbox/backend/crates/cb-sidecar/src/main.rs:56-75` (PUT /config)
 - **Category**: Security Control Bypass
 - **Description**: The `PUT /config` endpoint accepts any valid JSON and writes it to `/root/.openclaw/openclaw.json`. Combined with `POST /restart-gateway`, this allows complete reconfiguration of the OpenClaw agent. The current config enforces:
   - `sandbox.mode: "all"` -- all tool calls sandboxed
@@ -211,7 +211,7 @@ The cb-sidecar is the most security-critical 168 lines in the entire Cludbox pla
 
 ### [SIDE-CRIT-005] Forward Proxy SSRF Enables Agent to Reach Any VPS Sidecar
 
-- **Location**: `/home/mr-idiot/claude/cludbox/backend/crates/cb-api/src/proxy.rs:196-231` (CONNECT handler)
+- **Location**: `/home/mr-idiot/claude/slopbox/backend/crates/cb-api/src/proxy.rs:196-231` (CONNECT handler)
 - **Category**: SSRF / Cross-Tenant Attack / Lateral Movement
 - **Description**: The forward proxy (`cb-api/src/proxy.rs`) handles `CONNECT` requests with no destination filtering. The agent can tunnel TCP to any IP:port reachable from the control plane, including other VPS sidecars on the same VPC network. While sidecars are protected by their individual `SIDECAR_SECRET`, the combination of SSRF + unauthenticated health/metrics endpoints enables reconnaissance and potential cross-tenant attacks.
 
@@ -246,7 +246,7 @@ The cb-sidecar is the most security-critical 168 lines in the entire Cludbox pla
 
 ### [SIDE-HIGH-001] Bearer Token Comparison Vulnerable to Timing Attack
 
-- **Location**: `/home/mr-idiot/claude/cludbox/backend/crates/cb-sidecar/src/main.rs:26`
+- **Location**: `/home/mr-idiot/claude/slopbox/backend/crates/cb-sidecar/src/main.rs:26`
 - **Category**: Cryptographic Weakness / Authentication Bypass
 - **Description**: The sidecar uses `!=` (string inequality) for Bearer token comparison. This is a non-constant-time comparison that leaks information about how many bytes of the secret match.
 
@@ -269,14 +269,14 @@ The cb-sidecar is the most security-critical 168 lines in the entire Cludbox pla
 
 ### [SIDE-HIGH-002] Unauthenticated Health and Metrics Endpoints Enable Reconnaissance
 
-- **Location**: `/home/mr-idiot/claude/cludbox/backend/crates/cb-sidecar/src/main.rs:41-52, 132-137`
+- **Location**: `/home/mr-idiot/claude/slopbox/backend/crates/cb-sidecar/src/main.rs:41-52, 132-137`
 - **Category**: Information Disclosure
 - **Description**: The `/health` and `/metrics` endpoints require no authentication. While `/metrics` is currently a stub, `/health` reveals:
   - Whether the sidecar is alive (the sidecar exists on this VM)
   - Whether the OpenClaw gateway is running (`openclaw_running: true/false`)
 
   This information is useful for:
-  - Confirming a target VM is a Cludbox agent
+  - Confirming a target VM is a Slopbox agent
   - Determining whether the gateway has been restarted or is down
   - Fingerprinting the service for targeted attacks
 
@@ -290,7 +290,7 @@ The cb-sidecar is the most security-critical 168 lines in the entire Cludbox pla
 
 ### [SIDE-HIGH-003] No TLS -- Sidecar Secret Transmitted in Plaintext
 
-- **Location**: `/home/mr-idiot/claude/cludbox/backend/crates/cb-api/src/sidecar_client.rs:31` and `/home/mr-idiot/claude/cludbox/backend/crates/cb-sidecar/src/main.rs:159`
+- **Location**: `/home/mr-idiot/claude/slopbox/backend/crates/cb-api/src/sidecar_client.rs:31` and `/home/mr-idiot/claude/slopbox/backend/crates/cb-sidecar/src/main.rs:159`
 - **Category**: Credential Exposure / Transport Security
 - **Description**: The sidecar communicates over plaintext HTTP. The `SidecarClient` in the control plane sends the `SIDECAR_SECRET` in the `Authorization: Bearer` header over unencrypted HTTP:
 
@@ -326,7 +326,7 @@ The cb-sidecar is the most security-critical 168 lines in the entire Cludbox pla
 
 ### [SIDE-HIGH-004] `..` Path Traversal Check is Insufficient -- Symlink Following
 
-- **Location**: `/home/mr-idiot/claude/cludbox/backend/crates/cb-sidecar/src/main.rs:88`
+- **Location**: `/home/mr-idiot/claude/slopbox/backend/crates/cb-sidecar/src/main.rs:88`
 - **Category**: Path Traversal / Arbitrary File Write
 - **Description**: The path traversal check rejects paths containing the literal string `..`. However, this check is insufficient because:
 
@@ -360,7 +360,7 @@ The cb-sidecar is the most security-critical 168 lines in the entire Cludbox pla
 
 ### [SIDE-MED-001] tools_deny User-Overridable via UpdateConfigRequest
 
-- **Location**: `/home/mr-idiot/claude/cludbox/backend/crates/cb-api/src/dto.rs:191-194` and `/home/mr-idiot/claude/cludbox/backend/crates/cb-api/src/openclaw_config.rs:91-93`
+- **Location**: `/home/mr-idiot/claude/slopbox/backend/crates/cb-api/src/dto.rs:191-194` and `/home/mr-idiot/claude/slopbox/backend/crates/cb-api/src/openclaw_config.rs:91-93`
 - **Category**: Security Control Bypass
 - **Description**: The `UpdateConfigRequest` DTO accepts a `tools_deny` field. If the user (or a compromised BFF) sends `tools_deny: []`, the resulting config will have an empty deny list, allowing the agent to use `gateway` and `nodes` tools that are denied by default. The `gateway` tool gives the agent direct access to gateway internals, potentially including the ability to read environment variables.
 
@@ -381,7 +381,7 @@ The cb-sidecar is the most security-critical 168 lines in the entire Cludbox pla
 
 ### [SIDE-MED-002] Sidecar Has No Request Size Limits -- Disk Exhaustion via Large Writes
 
-- **Location**: `/home/mr-idiot/claude/cludbox/backend/crates/cb-sidecar/src/main.rs:79-102`
+- **Location**: `/home/mr-idiot/claude/slopbox/backend/crates/cb-sidecar/src/main.rs:79-102`
 - **Category**: Denial of Service
 - **Description**: Neither the `/config` nor `/files/*` endpoints impose any request body size limit. An attacker (or a misbehaving control plane) can send multi-gigabyte payloads that exhaust the VM's disk space.
 
@@ -395,7 +395,7 @@ The cb-sidecar is the most security-critical 168 lines in the entire Cludbox pla
 
 ### [SIDE-MED-003] Blocking File I/O in Async Context -- DoS via Slow Writes
 
-- **Location**: `/home/mr-idiot/claude/cludbox/backend/crates/cb-sidecar/src/main.rs:69-72, 96-99`
+- **Location**: `/home/mr-idiot/claude/slopbox/backend/crates/cb-sidecar/src/main.rs:69-72, 96-99`
 - **Category**: Denial of Service
 - **Description**: The sidecar uses synchronous `std::fs::write()` and `std::fs::create_dir_all()` inside async handler functions. These calls block the tokio runtime thread. On a single-threaded runtime (or under concurrent load), this can stall the entire sidecar.
 
@@ -409,7 +409,7 @@ The cb-sidecar is the most security-critical 168 lines in the entire Cludbox pla
 
 ### [SIDE-MED-004] systemctl restart via Sidecar Enables Abuse Timing Window
 
-- **Location**: `/home/mr-idiot/claude/cludbox/backend/crates/cb-sidecar/src/main.rs:106-122`
+- **Location**: `/home/mr-idiot/claude/slopbox/backend/crates/cb-sidecar/src/main.rs:106-122`
 - **Category**: Race Condition / Timing Attack
 - **Description**: The `POST /restart-gateway` endpoint calls `systemctl restart openclaw`. Between the gateway shutdown and the new gateway startup, there is a window where:
   1. The agent is not running (no monitoring, no billing, no sandbox enforcement).
@@ -431,7 +431,7 @@ The cb-sidecar is the most security-critical 168 lines in the entire Cludbox pla
 
 ### [SIDE-LOW-001] pgrep-Based Health Check is Spoofable
 
-- **Location**: `/home/mr-idiot/claude/cludbox/backend/crates/cb-sidecar/src/main.rs:42-46`
+- **Location**: `/home/mr-idiot/claude/slopbox/backend/crates/cb-sidecar/src/main.rs:42-46`
 - **Category**: Monitoring Integrity
 - **Description**: The health check uses `pgrep -x openclaw` to determine if the gateway is running. If an attacker has gained code execution on the VM (via the attack chain above), they can create a process named `openclaw` that keeps the health check returning `true` while the actual gateway is stopped or replaced.
 
@@ -451,9 +451,9 @@ The cb-sidecar is the most security-critical 168 lines in the entire Cludbox pla
 
 ### [SIDE-LOW-002] Metrics Endpoint is a Stub -- No Resource Monitoring
 
-- **Location**: `/home/mr-idiot/claude/cludbox/backend/crates/cb-sidecar/src/main.rs:126-137`
+- **Location**: `/home/mr-idiot/claude/slopbox/backend/crates/cb-sidecar/src/main.rs:126-137`
 - **Category**: Monitoring Gap
-- **Description**: The `/metrics` endpoint returns `null` for all metrics. The CLAUDE.md requirement 4a states "VPS usage statistics be properly monitorable FROM OUTSIDE OF the sandboxed environment." This stub violates that requirement. The `StubCollector` in the monitor (`/home/mr-idiot/claude/cludbox/backend/crates/cb-api/src/monitor.rs:26-37`) simply echoes back the existing DB values, meaning no actual metrics collection occurs.
+- **Description**: The `/metrics` endpoint returns `null` for all metrics. The CLAUDE.md requirement 4a states "VPS usage statistics be properly monitorable FROM OUTSIDE OF the sandboxed environment." This stub violates that requirement. The `StubCollector` in the monitor (`/home/mr-idiot/claude/slopbox/backend/crates/cb-api/src/monitor.rs:26-37`) simply echoes back the existing DB values, meaning no actual metrics collection occurs.
 
 - **Impact**: No CPU or memory usage enforcement. The agent can consume unlimited CPU and memory without detection. Only bandwidth is metered (via the proxy).
 
@@ -463,7 +463,7 @@ The cb-sidecar is the most security-critical 168 lines in the entire Cludbox pla
 
 ### [SIDE-LOW-003] No Audit Logging of Sidecar Operations
 
-- **Location**: `/home/mr-idiot/claude/cludbox/backend/crates/cb-sidecar/src/main.rs` (entire file)
+- **Location**: `/home/mr-idiot/claude/slopbox/backend/crates/cb-sidecar/src/main.rs` (entire file)
 - **Category**: Audit / Forensics
 - **Description**: The sidecar logs only its startup message (`tracing::info!(addr, "starting sidecar")`). No handler logs any operation -- file writes, config updates, restarts, or authentication failures. If an attacker uses the sidecar to rewrite config and restart the gateway, there is no record of this on the VM (the agent could delete logs after gaining root access).
 
@@ -479,19 +479,19 @@ The cb-sidecar is the most security-critical 168 lines in the entire Cludbox pla
 
 ### [SIDE-INFO-001] Sidecar Runs as Root -- Excessive Privilege
 
-- **Location**: `/home/mr-idiot/claude/cludbox/backend/crates/cb-sidecar/src/main.rs` (runs as PID 1 or systemd service as root)
+- **Location**: `/home/mr-idiot/claude/slopbox/backend/crates/cb-sidecar/src/main.rs` (runs as PID 1 or systemd service as root)
 - **Category**: Principle of Least Privilege
 - **Description**: The sidecar runs as root to write to `/root/.openclaw/` and run `systemctl`. This is more privilege than necessary. The sidecar could bind its port, then drop privileges to a dedicated user that has write access only to the OpenClaw config directory and `systemctl restart openclaw` via sudoers.
 
 - **Impact**: If any vulnerability in axum, tokio, or the sidecar itself allows RCE, the attacker immediately has root access. With privilege dropping, the blast radius would be limited.
 
-- **Recommendation**: Create a `cludbox-sidecar` user with minimal permissions. Bind port 9090 before dropping privileges. Use polkit or sudo for `systemctl restart openclaw` only.
+- **Recommendation**: Create a `slopbox-sidecar` user with minimal permissions. Bind port 9090 before dropping privileges. Use polkit or sudo for `systemctl restart openclaw` only.
 
 ---
 
 ### [SIDE-INFO-002] SidecarClient Does Not Verify TLS or Server Identity
 
-- **Location**: `/home/mr-idiot/claude/cludbox/backend/crates/cb-api/src/sidecar_client.rs:24-28`
+- **Location**: `/home/mr-idiot/claude/slopbox/backend/crates/cb-api/src/sidecar_client.rs:24-28`
 - **Category**: Transport Security
 - **Description**: The `SidecarClient` uses `reqwest::Client::new()` with no TLS configuration, no certificate pinning, and no server identity verification. Even if TLS were added to the sidecar in the future, the client would accept any certificate unless explicitly configured.
 
@@ -519,7 +519,7 @@ Step 1: Agent uses web_fetch tool to probe http://127.0.0.1:9090/health
         [SIDE-CRIT-001]
 
 Step 2: Agent reads SIDECAR_SECRET from gateway process environment
-        or /etc/cludbox/env via any host-context tool
+        or /etc/slopbox/env via any host-context tool
         [SIDE-CRIT-002]
 
 Step 3: Agent uses web_fetch to PUT /config with sandbox disabled
@@ -569,7 +569,7 @@ Step 5: Gateway restarts with no sandbox. Agent has root access.
 
 ## Architectural Question: Is the Sidecar Even Necessary?
 
-The sidecar exists because Cludbox needs an administrative channel into the VM without SSH. But the sidecar introduces a massive attack surface. Consider alternatives:
+The sidecar exists because Slopbox needs an administrative channel into the VM without SSH. But the sidecar introduces a massive attack surface. Consider alternatives:
 
 1. **Immutable config at provision time only**: Inject all config during cloud-init / Fly Machine creation. To change config, destroy and recreate the VM. This eliminates the sidecar entirely.
 
@@ -579,7 +579,7 @@ The sidecar exists because Cludbox needs an administrative channel into the VM w
 
 4. **Reduce to config-only**: Remove the `/files/*` endpoint entirely. Only allow `/config` with strict schema validation. This dramatically reduces the blast radius.
 
-The current design -- a root-running HTTP server with arbitrary file write capabilities, authenticated by a single static token that shares the same environment as the agent runtime -- is the highest-risk component in the Cludbox architecture.
+The current design -- a root-running HTTP server with arbitrary file write capabilities, authenticated by a single static token that shares the same environment as the agent runtime -- is the highest-risk component in the Slopbox architecture.
 
 ---
 

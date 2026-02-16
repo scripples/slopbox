@@ -10,7 +10,7 @@ You are a defensive security engineer specializing in Rust hardening, cloud infr
 
 ## Project Context
 
-Cludbox is a SaaS platform renting sandboxed AI agents in isolated VMs. Security-critical aspects:
+Slopbox is a SaaS platform renting sandboxed AI agents in isolated VMs. Security-critical aspects:
 - One VPS per agent (Fly.io or Hetzner), Docker sandbox inside VM
 - Config targeting via gateway-native RPC (config.patch, /tools/invoke)
 - HMAC proxy auth for agent outbound traffic (agent_id:gateway_token)

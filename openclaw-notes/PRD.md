@@ -1,15 +1,15 @@
-# Cludbox — Product Requirements Document
+# Slopbox — Product Requirements Document
 
-> Updated 2026-02-15 — React + Convex frontend, Auth0 auth provider
+> Updated 2026-02-16
 
 ---
 
 ## 1. Product Overview
 
-**Product:** Cludbox
+**Product:** Slopbox
 **Tagline:** "Your AI agent, sandboxed and ready."
 
-Cludbox is a SaaS platform that gives users their own personal AI agent running
+Slopbox is a SaaS platform that gives users their own personal AI agent running
 in an isolated cloud VM. Each agent is a full OpenClaw instance running in a
 dedicated virtual machine with Docker-based sandbox isolation. Users configure
 their agent's personality and channels, then interact via messaging platforms
@@ -43,7 +43,7 @@ Landing Page → Sign Up → Onboarding → Dashboard → Chat (via gateway prox
 ```
 
 1. User visits landing page, sees features and pricing
-2. Signs up via Auth0 (Google, GitHub OAuth or email/password)
+2. Signs up via Auth.js (Google, GitHub OAuth or email/password)
 3. Onboarding flow:
    - **Step 1:** Name the agent and pick personality (preset or custom)
    - **Step 2:** Select plan (determines resource limits + VPS config options)
@@ -62,16 +62,18 @@ Landing Page → Sign Up → Onboarding → Dashboard → Chat (via gateway prox
 
 | Requirement | Details |
 |-------------|---------|
-| Sign up | OAuth providers (Google, GitHub) via Auth0, or email/password |
-| Auth provider | Auth0 — integrated with Convex via `@convex-dev/auth` |
-| Session store | Convex database (Auth0 sessions + user records stored in Convex tables) |
-| API auth | Control plane API uses `Authorization: Bearer <Convex session token>` — cb-api validates by querying Convex |
-| Gateway proxy auth | Session cookie or Bearer token — user never sees gateway token |
+| Sign up | OAuth providers (Google, GitHub) via Auth.js, or email/password |
+| Auth provider | Auth.js (NextAuth) — manages OAuth flows and sessions |
+| Session store | PostgreSQL `sessions` table (Auth.js managed) |
+| API auth (BFF) | Frontend calls cb-api with `Authorization: Bearer <CONTROL_PLANE_API_KEY>` + `X-User-Id` header. The frontend is the trusted intermediary. |
+| Gateway proxy auth | Auth.js session cookie (`authjs.session-token`) — user never sees gateway token |
 
-Auth0 handles identity (OAuth, email/password). Convex stores the auth database
-(users, sessions). The React frontend uses the Convex React client for real-time
-auth state. The Rust backend (cb-api) reads Convex auth tables via the Rust
-`convex` crate to validate requests and resolve user identity.
+Auth.js handles identity (OAuth, email/password) and writes to PostgreSQL
+tables (`accounts`, `sessions`, `verification_tokens`). The `users` table is
+shared — Auth.js extended it with `email_verified` and `image` columns. The
+Rust backend reads Auth.js sessions directly from PostgreSQL for gateway proxy
+auth, and uses the BFF pattern (shared API key + trusted `X-User-Id`) for
+control plane API routes called by the frontend.
 
 ### 4.2 Agent Management
 
@@ -154,13 +156,15 @@ gateway token and VM address are never exposed to the browser.
 **Flow:**
 ```
 User browser
-  → our-app.com/dashboard/gateway (session cookie or Convex auth token)
+  → our-app.com/agents/{id}/gateway/* (Auth.js session cookie)
   → cb-api gateway proxy:
-    1. Validate session (query Convex auth DB via Rust convex crate)
-    2. Look up agent + VPS for user
-    3. Proxy HTTP/WebSocket to VM's gateway (inject gateway token)
-    4. Stream response back
-  → User sees OpenClaw Control UI
+    1. Validate session cookie against PG sessions table
+    2. Look up agent + VPS for user (ownership check)
+    3. Proxy HTTP/WebSocket to VM's gateway (inject gateway token + HMAC nonce)
+    4. Filter dangerous WebSocket RPC methods (config.*, exec.approvals.*, update.run)
+    5. Block POST /tools/invoke at HTTP layer
+    6. Stream response back (with bandwidth tracking)
+  → User sees filtered OpenClaw Control UI
 ```
 
 **What this enables:**
@@ -170,11 +174,12 @@ User browser
 - Can add rate limiting, CSP headers at our edge
 - Revoke access instantly by stopping VM
 
-**RPC method filtering:** The gateway proxy should block dangerous RPC methods
-(`config.*`, `exec.approvals.*`, `update.run`) that could modify security
-settings. Only safe methods (`chat.*`, `sessions.*`, `status`, `health`,
-`cron.*`) are forwarded. This may require a WebSocket message filter in the
-proxy layer.
+**RPC method filtering:** The gateway proxy blocks dangerous RPC methods
+(`config.*`, `exec.approvals.*`, `exec.approval.resolve`, `update.run`) by
+parsing WebSocket JSON text frames and checking the `method` field. Blocked
+methods get a synthetic JSON-RPC error response. `POST /tools/invoke` is
+blocked at the HTTP layer. See `openclaw-notes/GATEWAY.md` §Transport for
+details on frame interception.
 
 ### 4.7 Dashboard
 
@@ -248,20 +253,15 @@ billing.
 
 ### 5.1 Tables
 
-**Convex database (auth — managed by Auth0 + Convex):**
-```
-users               — User accounts (email, name, Auth0 subject). Managed by Convex auth.
-authSessions        — Active auth sessions. Managed by Convex auth.
-authAccounts        — OAuth provider accounts (Auth0 identities). Managed by Convex auth.
-authRateLimits      — Rate limiting for auth flows. Managed by Convex auth.
-```
-
-**PostgreSQL (application data — managed by cb-api):**
+**PostgreSQL (all data — managed by cb-api and Auth.js):**
 ```
 plans               — Subscription plans (resource limits + overage rates)
 vps_configs         — VM resource tier definitions (CPU, RAM, disk, provider, image)
 plan_vps_configs    — Join table: which VPS configs are available on which plans
-users               — Synced user records (convex_user_id, email, plan_id). cb-api creates on first auth.
+users               — User accounts (email, name, plan_id, email_verified, image). Shared between Auth.js and cb-api.
+accounts            — OAuth provider accounts (Auth.js managed, read-only from Rust)
+sessions            — Active auth sessions (Auth.js managed, read-only from Rust)
+verification_tokens — Email verification tokens (Auth.js managed)
 vpses               — VM instances (state, provider refs, usage counters)
 agents              — AI agents (name, gateway_token, linked VPS)
 agent_channels      — Channel credentials per agent (kind, credentials JSONB, webhook_secret)
@@ -269,21 +269,22 @@ vps_usage_periods   — Monthly resource usage counters per VPS
 overage_budgets     — Per-user monthly overage spending caps
 ```
 
-The `users` table in PostgreSQL mirrors the Convex user identity, linked by
-`convex_user_id`. On first authenticated request, cb-api creates a local user
-record if one doesn't exist.
+Auth.js manages `accounts`, `sessions`, and `verification_tokens`. The `users`
+table is shared — Auth.js creates users and manages `email_verified` + `image`
+columns; cb-api manages `plan_id` and reads the rest.
 
 ### 5.2 Key Relationships
 
 ```
-Convex users  1 ←→ 1  PG users     (linked via convex_user_id)
-PG users      1 ←→ N  agents
-agents        1 ←→ 0..1  vpses     (agent may or may not have a VM)
+users         1 ←→ N  agents
+users         1 ←→ N  accounts          (Auth.js OAuth credentials)
+users         1 ←→ N  sessions          (Auth.js sessions)
+agents        1 ←→ 0..1  vpses          (agent may or may not have a VM)
 agents        1 ←→ N  agent_channels
 vpses         1 ←→ N  vps_usage_periods
-PG users      1 ←→ N  overage_budgets
-plans         N ←→ N  vps_configs  (via plan_vps_configs)
-PG users      N ←→ 1  plans
+users         1 ←→ N  overage_budgets
+plans         N ←→ N  vps_configs       (via plan_vps_configs)
+users         N ←→ 1  plans             (optional)
 ```
 
 ---
@@ -294,12 +295,10 @@ PG users      N ←→ 1  plans
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | React 19 (Vite SPA), Tailwind CSS |
-| Real-time backend | Convex (auth database, real-time subscriptions) |
-| Auth | Auth0 (OAuth + email/password), integrated via `@convex-dev/auth` |
+| Frontend | Not yet built (planned: React/Next.js SPA) |
+| Auth | Auth.js (NextAuth) — OAuth + email/password, sessions in PostgreSQL |
 | Control plane API | Rust (axum 0.8) — cb-api crate |
-| Application database | PostgreSQL (sqlx 0.8, compile-time-unchecked queries) |
-| Convex ↔ Rust | `convex` Rust crate (cb-api reads Convex auth tables for session validation) |
+| Database | PostgreSQL (sqlx 0.8, compile-time-unchecked queries) — all tables |
 | VPS Providers | Hetzner Cloud (hcloud 0.25), Fly.io Machines (fly-api crate) |
 | Agent Runtime | OpenClaw (Node.js, runs inside VM) |
 | Sandbox | Docker (hypervisor + virtio-fs) inside VM |
@@ -317,7 +316,7 @@ PG users      N ←→ 1  plans
 
 ### 6.3 Control Plane API Endpoints
 
-**Authenticated (Convex session token in `Authorization: Bearer`):**
+**Authenticated (BFF pattern: `Authorization: Bearer <CONTROL_PLANE_API_KEY>` + `X-User-Id`):**
 
 | Method | Path | Purpose |
 |--------|------|---------|
@@ -338,7 +337,7 @@ PG users      N ←→ 1  plans
 | PUT | `/users/me/overage-budget` | Set overage budget |
 | GET | `/plans` | List available plans |
 
-**Gateway proxy (Convex session auth):**
+**Gateway proxy (Auth.js session cookie):**
 
 | Method | Path | Purpose |
 |--------|------|---------|
@@ -504,42 +503,58 @@ The background monitor in cb-api (`spawn_monitor`) runs the collection loop:
 ### Done (backend)
 
 - PostgreSQL schema: plans, vps_configs, users, vpses, agents, agent_channels,
-  vps_usage_periods, overage_budgets (12 migrations)
+  vps_usage_periods, overage_budgets, Auth.js tables (12 migrations)
 - Control plane API: agent CRUD, VPS lifecycle (provision/start/stop/destroy),
   channel CRUD, usage checks, overage budget management
 - VPS provider abstraction: VpsProvider trait with Hetzner + Fly implementations
 - Provider registry: `build_providers()` constructs available providers at startup
-- Background monitor: polls running VPSes, collects metrics, checks limits
 - Forward proxy: Basic-auth proxy (agent_id:gateway_token) for outbound traffic
-- Auth middleware: API key + X-User-Id header validation
+  with bandwidth tracking and per-request usage enforcement (Fly)
+- Gateway proxy: HTTP + WebSocket proxy with session cookie auth, gateway token
+  injection, HMAC nonce signing, RPC method filtering, `/tools/invoke` blocking
+- Auth middleware: BFF pattern (CONTROL_PLANE_API_KEY + X-User-Id) for API routes,
+  Auth.js session cookies for gateway proxy routes
+- OpenClaw config generation: locked-down sandbox + tool policy + gateway config
 - Database models with all CRUD operations
+- Workspace file updates via gateway HTTP `/tools/invoke` endpoint
+- Agent health checks via gateway HTTP endpoint
 
 ### Done (architecture decisions)
 
-- OpenClaw runs natively on VM with Docker sandbox — no custom channel proxy
+- OpenClaw runs natively on VM with Docker sandbox
 - Channel credentials on VM, protected by sandbox isolation
 - LLM API keys on VM as host env vars, invisible to sandbox
-- Control UI proxied through our app (gateway token hidden from browser)
+- Control UI proxied through cb-api (gateway token hidden from browser)
+- WebSocket RPC method filtering at proxy layer (config.*, exec.approvals.*, update.run blocked)
 - Resource-based billing with overage budgets
-- Auth0 + Convex for auth, React SPA for frontend
-- Backend in `backend/` subdirectory, frontend in `frontend/` subdirectory
+- Auth.js for auth (OAuth + sessions in PostgreSQL)
+- Backend in `backend/` subdirectory
+
+### Partially Done
+
+- **Background monitor:** Enforcement logic complete (detects overage, stops
+  Hetzner VPSes, checks overage budgets). Metrics collection uses StubCollector
+  (returns existing DB values). **Missing: real provider API integration.**
 
 ### Not Started
 
-- **Frontend:** React + Convex app (landing, auth, onboarding, dashboard, admin)
-- **Convex schema:** Auth tables (`@convex-dev/auth` with Auth0 provider)
-- **cb-api Convex integration:** Rust `convex` crate to read auth sessions for
-  request validation (replacing Auth.js session cookie lookup)
+- **Frontend:** Web app (landing, auth, onboarding, dashboard, admin). No
+  framework chosen yet — Auth.js is in the backend, frontend needs to integrate.
 - **Onboarding flow:** Wizard that creates agent, provisions VM, writes config
-- **Channel setup UI:** WhatsApp QR pairing, Telegram bot token input
-- **VM image:** Pre-built image with OpenClaw + Docker
-- **Provider metrics integration:** Fly Prometheus API + Hetzner REST metrics API polling
-- **Gateway RPC client:** WebSocket client in cb-api for config.patch, config.set
-  (control plane writes config to running VMs via gateway-native RPC)
+- **Channel setup UI:** WhatsApp QR pairing (via gateway `web.login.*` RPC),
+  Telegram bot token input
+- **VM image:** Pre-built image with OpenClaw + Docker (Packer or similar)
+- **Provider metrics integration:** Fly Prometheus API + Hetzner REST metrics
+  API polling — needs a real `MetricsCollector` implementation to replace
+  `StubCollector`
+- **Gateway RPC client:** WebSocket client in cb-api for `config.patch`,
+  `config.apply` (control plane writes config to running VMs via gateway-native
+  RPC). Currently `update_config` and `restart_agent` return 501.
 - **Stripe integration:** Subscription billing
 - **Admin panel:** User/VM management, overage enforcement UI
-- **VM pool:** Pre-provisioned VMs for fast onboarding (like reference PRD's
-  sprite pool concept)
+- **Notifications:** Email/dashboard alerts for overage, VPS status changes
+- **VM pool:** Pre-provisioned VMs for fast onboarding
+- **Automated tests:** No test files in the workspace
 
 ---
 
@@ -548,12 +563,11 @@ The background monitor in cb-api (`spawn_monitor`) runs the collection loop:
 | Risk | Severity | Notes |
 |------|----------|-------|
 | Docker-in-VM feasibility (Fly) | High | Fly Machines are Firecracker microVMs — Docker sandbox may need investigation. Hetzner VMs work natively. |
-| `config.*` RPC bypass | High | If gateway proxy doesn't filter RPC methods, user can disable sandbox via Control UI. Must implement WebSocket message filter. |
-| Provider metrics not implemented | High | Provider API integration not built yet. Hetzner lacks RAM metrics (use fixed allocation from VPS tier). Fly has full coverage via Prometheus API. |
-| Gateway RPC client not implemented | Medium | Config targeting endpoints (PUT /config, PUT /workspace, POST /restart) return 501 until gateway WebSocket RPC client is built. |
-| Gateway token in forward proxy | Medium | Forward proxy uses Basic auth with gateway_token. Token is on the VM but sandbox-protected. |
+| Provider metrics not implemented | High | StubCollector in use. Provider API integration (Fly Prometheus, Hetzner REST) not built. Hetzner lacks RAM metrics (use fixed allocation from VPS tier). |
+| Gateway RPC client not implemented | High | `update_config` and `restart_agent` return 501. Control plane cannot write config to running VMs until a WebSocket RPC client is built for `config.patch` / `config.apply`. |
 | No payment integration | High | Revenue model not functional without Stripe. |
-| No automated tests | Medium | No test files in Rust backend. |
-| Convex ↔ cb-api integration | Medium | cb-api must query Convex auth DB via Rust `convex` crate for session validation. Requires stable Convex Rust client and network call per auth check (consider caching). |
-| WhatsApp pairing UX | Medium | Baileys requires QR scan — needs real-time WebSocket from VM to frontend. May route through gateway proxy. |
-| Auth0 rate limits | Low | Auth0 free tier has rate limits on management API calls. Ensure cb-api caches session lookups to avoid hitting limits. |
+| BFF auth model | Medium | API routes use shared `CONTROL_PLANE_API_KEY` + trusted `X-User-Id`. This is safe when the frontend is the only caller, but the API key is a single point of compromise. Consider per-user tokens or JWT. |
+| Gateway token in forward proxy | Medium | Forward proxy uses Basic auth with gateway_token. Token is on the VM but sandbox-protected. |
+| No automated tests | Medium | No test files in the workspace. |
+| WhatsApp pairing UX | Medium | Baileys requires QR scan — needs real-time WebSocket from VM to frontend via gateway proxy (`web.login.*` RPC). |
+| No frontend | High | No web UI exists. Backend API is functional but unusable without a frontend. |

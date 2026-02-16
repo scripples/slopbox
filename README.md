@@ -1,4 +1,4 @@
-# Cludbox
+# Slopbox
 
 SaaS platform for renting sandboxed AI agents as containerized apps. Each agent runs inside an isolated microVM (Fly.io Machine or Hetzner Cloud server) with provider-managed storage. Users interact with agents through a forward proxy that gates and meters all traffic. The control plane handles provisioning, billing limits, and account management.
 
@@ -85,7 +85,7 @@ SaaS platform for renting sandboxed AI agents as containerized apps. Each agent 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `FLY_API_TOKEN` | Yes | — | Fly.io API token |
-| `FLY_APP_NAME` | No | `cludbox-agents` | Fly app name |
+| `FLY_APP_NAME` | No | `slopbox-agents` | Fly app name |
 | `FLY_REGION` | No | `iad` | Default region |
 
 ### Hetzner Cloud Provider
@@ -105,7 +105,7 @@ SaaS platform for renting sandboxed AI agents as containerized apps. Each agent 
 | `LISTEN_ADDR` | `0.0.0.0:8080` | API server bind address |
 | `PROXY_LISTEN_ADDR` | `0.0.0.0:3128` | Forward proxy bind address |
 | `PROXY_EXTERNAL_ADDR` | `cb-api:3128` | Proxy address advertised to agents |
-| `AGENT_BASE_IMAGE` | `cludbox/agent-base:latest` | Container image for VPSes |
+| `AGENT_BASE_IMAGE` | `slopbox/agent-base:latest` | Container image for VPSes |
 | `MONITOR_INTERVAL_SECS` | `60` | Metrics polling interval |
 | `RUST_LOG` | `info` | Tracing log filter |
 

@@ -4,9 +4,9 @@ services:
     ports:
       - "8322:5432"
     environment:
-      POSTGRES_USER: cludbox
-      POSTGRES_PASSWORD: cludbox
-      POSTGRES_DB: cludbox
+      POSTGRES_USER: slopbox
+      POSTGRES_PASSWORD: slopbox
+      POSTGRES_DB: slopbox
     volumes:
       - pgdata:/var/lib/postgresql/data
 

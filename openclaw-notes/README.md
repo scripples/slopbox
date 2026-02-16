@@ -1,9 +1,9 @@
 # OpenClaw Architecture Notes
 
-Reference notes for Cludbox integration. Focused on component relationships,
+Reference notes for Slopbox integration. Focused on component relationships,
 communication models, and security boundaries.
 
-**See also:** [PRD.md](PRD.md) for the full Cludbox product requirements document,
+**See also:** [PRD.md](PRD.md) for the full Slopbox product requirements document,
 and [GATEWAY.md](GATEWAY.md) for the complete OpenClaw gateway endpoint reference.
 
 ---
@@ -238,7 +238,7 @@ Exec runs directly on the host. The agent can:
 - `read("~/.openclaw/.env")` — reads the env file directly
 - `read("~/.openclaw/openclaw.json")` — reads full gateway config
 
-**This is the fundamental reason sandboxing matters for Cludbox.**
+**This is the fundamental reason sandboxing matters for Slopbox.**
 
 ### Filesystem isolation
 
@@ -262,7 +262,7 @@ Exec runs directly on the host. The agent can:
 - Absolute paths in tool calls reach the entire host filesystem
 - Agent can `read("~/.openclaw/credentials/whatsapp.json")` etc.
 
-### Key security observations for Cludbox
+### Key security observations for Slopbox
 
 1. **Agent and gateway share a filesystem by default.** Without sandboxing, the
    agent's `read` tool can access `~/.openclaw/credentials/`, `openclaw.json`,
@@ -298,7 +298,7 @@ Exec runs directly on the host. The agent can:
 
 ---
 
-## Cludbox Architecture
+## Slopbox Architecture
 
 ### Design principle
 
@@ -409,7 +409,7 @@ The control plane does NOT relay messages. It manages infrastructure and config.
 ### Gateway configuration lockdown
 
 The OpenClaw gateway has powerful config/admin capabilities that must be
-restricted on Cludbox VMs. See `GATEWAY.md` for full endpoint reference.
+restricted on Slopbox VMs. See `GATEWAY.md` for full endpoint reference.
 
 **Locked down via tool policy:**
 
@@ -551,7 +551,7 @@ WebSocket to the VM gateway, authenticates with the gateway token, and calls
 two-tier access model: users get filtered access, the control plane gets full
 access.
 
-### Recommended `openclaw.json` for Cludbox VMs
+### Recommended `openclaw.json` for Slopbox VMs
 
 ```json5
 {
@@ -620,7 +620,7 @@ user when usage exceeds limits AND overage cost exceeds overage budget.
 ## Channel Credential Management
 
 How OpenClaw handles credentials for each channel, and what that means for
-Cludbox's control plane.
+Slopbox's control plane.
 
 ### Credential storage model
 
@@ -711,7 +711,7 @@ automatically. Three reload modes:
 **Channel config changes hot-apply without restart.** Gateway server settings
 (port, bind, TLS) and infrastructure (discovery, plugins) require restart.
 
-### Implications for Cludbox control plane
+### Implications for Slopbox control plane
 
 **Most channels don't need filesystem writes at all.** Telegram, Discord, Slack,
 and Google Chat credentials are stored inline in `openclaw.json`. The control

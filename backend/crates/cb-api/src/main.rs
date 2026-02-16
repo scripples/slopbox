@@ -11,6 +11,8 @@ mod state;
 
 use std::sync::Arc;
 
+use axum::http::{HeaderName, Method};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
 
@@ -51,13 +53,40 @@ async fn main() {
     let collector = Arc::new(StubCollector);
     spawn_monitor(db.clone(), collector, providers.clone(), config.monitor_interval_secs);
 
+    // CORS
+    let cors = CorsLayer::new()
+        .allow_origin(AllowOrigin::exact(
+            config.frontend_origin.parse().expect("FRONTEND_ORIGIN must be a valid header value"),
+        ))
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::PATCH,
+            Method::OPTIONS,
+        ])
+        .allow_headers([
+            HeaderName::from_static("authorization"),
+            HeaderName::from_static("content-type"),
+        ])
+        .allow_credentials(true);
+
+    // Sprites client (for config targeting via exec)
+    let sprites_client = std::env::var("SPRITES_API_TOKEN")
+        .ok()
+        .map(sprites_api::SpritesClient::new);
+
     let state = AppState {
         db,
         providers,
         config: config.clone(),
+        sprites_client,
     };
 
-    let app = api_router(state).layer(TraceLayer::new_for_http());
+    let app = api_router(state)
+        .layer(cors)
+        .layer(TraceLayer::new_for_http());
 
     let listener = tokio::net::TcpListener::bind(config.listen_addr)
         .await

@@ -19,7 +19,7 @@ impl FlyProvider {
 
         let token = std::env::var("FLY_API_TOKEN")
             .map_err(|_| Error::MissingEnv("FLY_API_TOKEN".into()))?;
-        let app = std::env::var("FLY_APP_NAME").unwrap_or_else(|_| "cludbox-agents".into());
+        let app = std::env::var("FLY_APP_NAME").unwrap_or_else(|_| "slopbox-agents".into());
         let region = std::env::var("FLY_REGION").unwrap_or_else(|_| "iad".into());
 
         Ok(Self {

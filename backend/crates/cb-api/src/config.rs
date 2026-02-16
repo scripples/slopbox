@@ -5,7 +5,8 @@ use std::net::SocketAddr;
 pub struct AppConfig {
     pub database_url: String,
     pub listen_addr: SocketAddr,
-    pub control_plane_api_key: String,
+    pub jwt_secret: String,
+    pub frontend_origin: String,
     pub monitor_interval_secs: u64,
     pub proxy_listen_addr: SocketAddr,
     pub proxy_external_addr: String,
@@ -19,8 +20,9 @@ impl AppConfig {
                 .unwrap_or_else(|_| "0.0.0.0:8080".into())
                 .parse()
                 .expect("LISTEN_ADDR must be a valid socket address"),
-            control_plane_api_key: env::var("CONTROL_PLANE_API_KEY")
-                .expect("CONTROL_PLANE_API_KEY must be set"),
+            jwt_secret: env::var("JWT_SECRET").expect("JWT_SECRET must be set"),
+            frontend_origin: env::var("FRONTEND_ORIGIN")
+                .unwrap_or_else(|_| "http://localhost:3000".into()),
             monitor_interval_secs: env::var("MONITOR_INTERVAL_SECS")
                 .unwrap_or_else(|_| "60".into())
                 .parse()

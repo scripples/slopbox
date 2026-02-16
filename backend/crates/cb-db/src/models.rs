@@ -172,6 +172,23 @@ impl VpsConfig {
 
 // ── User ────────────────────────────────────────────────────────────
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type, Serialize, Deserialize)]
+#[sqlx(type_name = "user_role", rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
+pub enum UserRole {
+    User,
+    Admin,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type, Serialize, Deserialize)]
+#[sqlx(type_name = "user_status", rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
+pub enum UserStatus {
+    Pending,
+    Active,
+    Frozen,
+}
+
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct User {
     pub id: Uuid,
@@ -180,6 +197,8 @@ pub struct User {
     pub plan_id: Option<Uuid>,
     pub email_verified: Option<DateTime<Utc>>,
     pub image: Option<String>,
+    pub role: UserRole,
+    pub status: UserStatus,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -210,6 +229,30 @@ impl User {
     pub async fn set_plan(pool: &PgPool, user_id: Uuid, plan_id: Option<Uuid>) -> sqlx::Result<()> {
         sqlx::query("UPDATE users SET plan_id = $1 WHERE id = $2")
             .bind(plan_id)
+            .bind(user_id)
+            .execute(pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn list_all(pool: &PgPool) -> sqlx::Result<Vec<Self>> {
+        sqlx::query_as("SELECT * FROM users ORDER BY created_at")
+            .fetch_all(pool)
+            .await
+    }
+
+    pub async fn set_status(pool: &PgPool, user_id: Uuid, status: UserStatus) -> sqlx::Result<()> {
+        sqlx::query("UPDATE users SET status = $1 WHERE id = $2")
+            .bind(status)
+            .bind(user_id)
+            .execute(pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn set_role(pool: &PgPool, user_id: Uuid, role: UserRole) -> sqlx::Result<()> {
+        sqlx::query("UPDATE users SET role = $1 WHERE id = $2")
+            .bind(role)
             .bind(user_id)
             .execute(pool)
             .await?;
@@ -343,6 +386,12 @@ impl Vps {
     pub async fn list_by_state(pool: &PgPool, state: VpsState) -> sqlx::Result<Vec<Self>> {
         sqlx::query_as("SELECT * FROM vpses WHERE state = $1 ORDER BY created_at")
             .bind(state)
+            .fetch_all(pool)
+            .await
+    }
+
+    pub async fn list_all(pool: &PgPool) -> sqlx::Result<Vec<Self>> {
+        sqlx::query_as("SELECT * FROM vpses WHERE state != 'destroyed' ORDER BY created_at")
             .fetch_all(pool)
             .await
     }

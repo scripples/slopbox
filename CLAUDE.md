@@ -1,4 +1,4 @@
-# Cludbox Development Guidelines
+# Slopbox Development Guidelines
 
 Always read READMEs first, and then dive into crates and specific implementations if it appears necessary.
 
@@ -9,7 +9,7 @@ Openclaw docs:
 https://docs.openclaw.ai/
 
 
-Cludbox is an agent-as-a-service platform based on OpenClaw. One VPS per agent (Fly.io or Hetzner). One plan, one agent to start. Security requirements:
+Slopbox is an agent-as-a-service platform based on OpenClaw. One VPS per agent (Fly.io or Hetzner). One plan, one agent to start. Security requirements:
 
 1. **VM-level isolation.** One VPS per agent. No cross-instance filesystem or memory access.
 
@@ -39,5 +39,5 @@ Cludbox is an agent-as-a-service platform based on OpenClaw. One VPS per agent (
 
 - sqlx queries use `query_as!` / `query!` with compile-time-unchecked.
 - Provider config is self-contained — each provider reads its own env vars via `from_env()`.
-- Factory function `cb_infra::create_provider()` reads `VPS_PROVIDER` env var.
+- `cb_infra::build_providers()` constructs all available providers at startup from env vars.
 

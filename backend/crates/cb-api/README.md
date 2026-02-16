@@ -1,6 +1,6 @@
 # cb-api
 
-Control plane API server, forward proxy, and background monitor for Cludbox.
+Control plane API server, forward proxy, and background monitor for Slopbox.
 
 ## Purpose
 

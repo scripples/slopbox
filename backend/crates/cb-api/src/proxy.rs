@@ -143,7 +143,7 @@ async fn authenticate(req: &Request<Incoming>, db: &PgPool) -> Result<Agent, Pro
 fn proxy_auth_required() -> ProxyResponse {
     Response::builder()
         .status(StatusCode::PROXY_AUTHENTICATION_REQUIRED)
-        .header(PROXY_AUTHENTICATE, "Basic realm=\"cludbox\"")
+        .header(PROXY_AUTHENTICATE, "Basic realm=\"slopbox\"")
         .body(Full::new(Bytes::from("Proxy authentication required")))
         .unwrap()
 }

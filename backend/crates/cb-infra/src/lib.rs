@@ -1,5 +1,6 @@
 pub mod fly;
 pub mod hetzner;
+pub mod sprites;
 pub mod types;
 
 use std::collections::HashMap;
@@ -19,6 +20,12 @@ pub enum Error {
     #[error("hetzner api error: {0}")]
     HetznerApi(String),
 
+    #[error("sprites api error: {0}")]
+    Sprites(#[from] sprites_api::Error),
+
+    #[error("sprites provisioning error: {0}")]
+    SpritesProvisioning(String),
+
     #[error("invalid id: {0}")]
     InvalidId(String),
 
@@ -37,6 +44,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum ProviderName {
     Fly,
     Hetzner,
+    Sprites,
 }
 
 impl ProviderName {
@@ -44,6 +52,7 @@ impl ProviderName {
         match self {
             Self::Fly => "fly",
             Self::Hetzner => "hetzner",
+            Self::Sprites => "sprites",
         }
     }
 
@@ -51,6 +60,7 @@ impl ProviderName {
     pub fn metered_resources(&self) -> MeteredResources {
         match self {
             Self::Fly | Self::Hetzner => MeteredResources::BANDWIDTH_ONLY,
+            Self::Sprites => MeteredResources::BANDWIDTH_ONLY,
         }
     }
 }
@@ -68,6 +78,7 @@ impl FromStr for ProviderName {
         match s {
             "fly" => Ok(Self::Fly),
             "hetzner" => Ok(Self::Hetzner),
+            "sprites" => Ok(Self::Sprites),
             other => Err(Error::UnknownProvider(other.to_string())),
         }
     }
@@ -110,7 +121,7 @@ pub fn metered_resources_for(provider: &str) -> MeteredResources {
 
 /// Backend-agnostic interface for managing agent VPSes.
 ///
-/// Each provider (Fly.io, Hetzner) implements this trait and owns its
+/// Each provider (Fly.io, Hetzner, Sprites) implements this trait and owns its
 /// own configuration, loaded from environment variables at construction.
 #[async_trait]
 pub trait VpsProvider: Send + Sync + 'static {
@@ -190,9 +201,17 @@ pub fn build_providers() -> Result<ProviderRegistry> {
         Err(e) => tracing::debug!("skipping Hetzner provider: {e}"),
     }
 
+    match sprites::SpritesProvider::from_env() {
+        Ok(p) => {
+            tracing::info!("registered Sprites VPS provider");
+            providers.insert(ProviderName::Sprites, Arc::new(p));
+        }
+        Err(e) => tracing::debug!("skipping Sprites provider: {e}"),
+    }
+
     if providers.is_empty() {
         return Err(Error::MissingEnv(
-            "no VPS providers configured (set FLY_API_TOKEN and/or HETZNER_API_TOKEN)".into(),
+            "no VPS providers configured (set FLY_API_TOKEN, HETZNER_API_TOKEN, and/or SPRITES_API_TOKEN)".into(),
         ));
     }
 

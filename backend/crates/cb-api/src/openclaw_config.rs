@@ -139,7 +139,7 @@ pub fn build_workspace_files(agent_name: &str) -> Vec<FileMount> {
     vec![
         FileMount {
             guest_path: format!("{base}/IDENTITY.md"),
-            raw_value: format!("# Identity\n\nYou are {agent_name}, a Cludbox agent.\n"),
+            raw_value: format!("# Identity\n\nYou are {agent_name}, a Slopbox agent.\n"),
         },
         FileMount {
             guest_path: format!("{base}/SOUL.md"),

@@ -1,5 +1,5 @@
 use chrono::{DateTime, NaiveDate, Utc};
-use cb_db::models::{Agent, Plan, User, Vps, VpsState};
+use cb_db::models::{Agent, Plan, User, UserRole, UserStatus, Vps, VpsState};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -103,6 +103,8 @@ pub struct UserResponse {
     pub id: Uuid,
     pub email: String,
     pub name: Option<String>,
+    pub role: UserRole,
+    pub status: UserStatus,
     pub plan: Option<PlanResponse>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -114,6 +116,8 @@ impl UserResponse {
             id: user.id,
             email: user.email,
             name: user.name,
+            role: user.role,
+            status: user.status,
             plan: plan.map(PlanResponse::from),
             created_at: user.created_at,
             updated_at: user.updated_at,

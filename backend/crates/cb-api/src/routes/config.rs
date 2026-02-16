@@ -62,10 +62,18 @@ fn vps_address(vps: &Vps) -> Result<&str, ApiError> {
         .ok_or_else(|| ApiError::Internal("VPS has no address".into()))
 }
 
+fn sprites_client(state: &AppState) -> Result<&sprites_api::SpritesClient, ApiError> {
+    state
+        .sprites_client
+        .as_ref()
+        .ok_or_else(|| ApiError::Internal("sprites client not configured".into()))
+}
+
 /// PUT /agents/{id}/config
 ///
-/// Rebuild openclaw.json with overrides and apply via gateway config.patch RPC.
-/// The gateway hot-reloads config changes — no restart needed.
+/// Rebuild openclaw.json with overrides and apply.
+/// For sprites: writes config file via exec and restarts the service.
+/// For other providers: applies via gateway config.patch RPC (not yet implemented).
 pub async fn update_config(
     State(state): State<AppState>,
     Extension(user_id): Extension<UserId>,
@@ -73,39 +81,84 @@ pub async fn update_config(
     Json(req): Json<UpdateConfigRequest>,
 ) -> Result<StatusCode, ApiError> {
     let (agent, vps) = get_running_agent_vps(&state, user_id.0, agent_id).await?;
-    let _address = vps_address(&vps)?;
 
-    let _config = openclaw_config::build_openclaw_config(&ConfigParams {
+    let config = openclaw_config::build_openclaw_config(&ConfigParams {
         agent_id,
         model: req.model,
         tools_deny: req.tools_deny,
     });
+    let config_json = openclaw_config::render_openclaw_config(&config);
 
-    // TODO: Implement gateway RPC client.
-    //
-    // The control plane connects directly to the gateway WebSocket at
-    // ws://{address}:{GATEWAY_PORT}/ws, authenticates with the gateway token
-    // (agent.gateway_token), and calls config.patch to apply the config diff.
-    // The gateway hot-reloads channel/agent/tool config without restart.
-    //
-    // Flow:
-    //   1. Connect to ws://{address}:18789/ws
-    //   2. Complete connect handshake with gateway_token
-    //   3. Send { type: "req", method: "config.patch", params: { patch: <config> } }
-    //   4. Await { type: "res", ok: true }
-    //   5. Close connection
-    let _ = (agent.gateway_token, GATEWAY_PORT);
+    if vps.provider == "sprites" {
+        let client = sprites_client(&state)?;
+        let vm_id = vps
+            .provider_vm_id
+            .as_deref()
+            .ok_or_else(|| ApiError::Internal("VPS has no provider VM ID".into()))?;
 
-    Err(ApiError::Internal(
-        "gateway RPC client not yet implemented".into(),
-    ))
+        // Write config file
+        let result = client
+            .exec(
+                vm_id,
+                &["tee", "/root/.openclaw/openclaw.json"],
+                Some(&config_json),
+            )
+            .await
+            .map_err(|e| ApiError::Internal(format!("failed to write config: {e}")))?;
+
+        if result.exit_code.unwrap_or(-1) != 0 {
+            return Err(ApiError::Internal(format!(
+                "failed to write config: {}",
+                result.stderr.unwrap_or_default()
+            )));
+        }
+
+        // Restart service: stop then start
+        let _ = client.stop_service(vm_id, "openclaw", None).await;
+        client
+            .start_service(vm_id, "openclaw")
+            .await
+            .map_err(|e| ApiError::Internal(format!("failed to start service: {e}")))?;
+
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        // Hetzner and other providers: write config via gateway tools/invoke
+        let address = vps_address(&vps)?;
+        let url = format!("http://{address}:{GATEWAY_PORT}/tools/invoke");
+
+        let payload = serde_json::json!({
+            "tool": "write",
+            "params": {
+                "path": "/root/.openclaw/openclaw.json",
+                "content": config_json,
+            }
+        });
+
+        let resp = reqwest::Client::new()
+            .post(&url)
+            .bearer_auth(&agent.gateway_token)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| ApiError::Internal(format!("gateway request failed: {e}")))?;
+
+        if resp.status().is_success() {
+            Ok(StatusCode::NO_CONTENT)
+        } else {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            Err(ApiError::Internal(format!(
+                "gateway returned {status}: {body}"
+            )))
+        }
+    }
 }
 
 /// PUT /agents/{id}/workspace/{filename}
 ///
-/// Write a workspace file (allowlisted) via gateway /tools/invoke write tool.
-/// The workspace is bind-mounted into the sandbox at /workspace, so writes
-/// via the gateway's tool dispatch reach the host filesystem.
+/// Write a workspace file (allowlisted).
+/// Primary path: gateway /tools/invoke write tool.
+/// Sprites fallback: direct exec write.
 pub async fn update_workspace_file(
     State(state): State<AppState>,
     Extension(user_id): Extension<UserId>,
@@ -119,71 +172,129 @@ pub async fn update_workspace_file(
     }
 
     let (agent, vps) = get_running_agent_vps(&state, user_id.0, agent_id).await?;
-    let address = vps_address(&vps)?;
 
-    // Write workspace file via gateway HTTP API.
-    // POST /tools/invoke with { tool: "write", params: { path, content } }
-    // The write tool targets the sandbox, but with workspaceAccess=rw the
-    // workspace is mounted — writes to /workspace/{filename} land on the host.
-    let url = format!(
-        "http://{address}:{GATEWAY_PORT}/tools/invoke",
-    );
+    if vps.provider == "sprites" {
+        // Sprites: write directly via exec
+        let client = sprites_client(&state)?;
+        let vm_id = vps
+            .provider_vm_id
+            .as_deref()
+            .ok_or_else(|| ApiError::Internal("VPS has no provider VM ID".into()))?;
 
-    let payload = serde_json::json!({
-        "tool": "write",
-        "params": {
-            "path": format!("/workspace/{filename}"),
-            "content": req.content,
+        let path = format!("/root/.openclaw/workspace/{filename}");
+
+        // Ensure directory exists
+        let _ = client
+            .exec(vm_id, &["mkdir", "-p", "/root/.openclaw/workspace"], None)
+            .await;
+
+        let result = client
+            .exec(vm_id, &["tee", &path], Some(&req.content))
+            .await
+            .map_err(|e| ApiError::Internal(format!("failed to write file: {e}")))?;
+
+        if result.exit_code.unwrap_or(-1) != 0 {
+            return Err(ApiError::Internal(format!(
+                "failed to write file: {}",
+                result.stderr.unwrap_or_default()
+            )));
         }
-    });
 
-    let resp = reqwest::Client::new()
-        .post(&url)
-        .bearer_auth(&agent.gateway_token)
-        .json(&payload)
-        .send()
-        .await
-        .map_err(|e| ApiError::Internal(format!("gateway request failed: {e}")))?;
-
-    if resp.status().is_success() {
         Ok(StatusCode::NO_CONTENT)
     } else {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        Err(ApiError::Internal(format!(
-            "gateway returned {status}: {body}"
-        )))
+        // Other providers: use gateway HTTP API
+        let address = vps_address(&vps)?;
+        let url = format!("http://{address}:{GATEWAY_PORT}/tools/invoke");
+
+        let payload = serde_json::json!({
+            "tool": "write",
+            "params": {
+                "path": format!("/workspace/{filename}"),
+                "content": req.content,
+            }
+        });
+
+        let resp = reqwest::Client::new()
+            .post(&url)
+            .bearer_auth(&agent.gateway_token)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| ApiError::Internal(format!("gateway request failed: {e}")))?;
+
+        if resp.status().is_success() {
+            Ok(StatusCode::NO_CONTENT)
+        } else {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            Err(ApiError::Internal(format!(
+                "gateway returned {status}: {body}"
+            )))
+        }
     }
 }
 
 /// POST /agents/{id}/restart
 ///
-/// Restart OpenClaw gateway via systemctl on the VM.
-/// With hot-reload, most config changes don't need this. Kept for cases
-/// where a full restart is required (port/bind/TLS changes, plugin updates).
+/// Restart OpenClaw gateway.
+/// For sprites: stop + start the openclaw service.
+/// For other providers: not yet implemented.
 pub async fn restart_agent(
     State(state): State<AppState>,
     Extension(user_id): Extension<UserId>,
     Path(agent_id): Path<Uuid>,
 ) -> Result<StatusCode, ApiError> {
     let (agent, vps) = get_running_agent_vps(&state, user_id.0, agent_id).await?;
-    let _address = vps_address(&vps)?;
 
-    // TODO: Implement gateway RPC client.
-    //
-    // Option A: Use config.apply RPC (replaces entire config + triggers restart).
-    // Option B: Keep a minimal restart mechanism (e.g. provider reboot API).
-    // Option C: Remove this endpoint entirely — hot-reload handles most cases.
-    let _ = (agent.gateway_token, GATEWAY_PORT);
+    if vps.provider == "sprites" {
+        let client = sprites_client(&state)?;
+        let vm_id = vps
+            .provider_vm_id
+            .as_deref()
+            .ok_or_else(|| ApiError::Internal("VPS has no provider VM ID".into()))?;
 
-    Err(ApiError::Internal(
-        "gateway RPC client not yet implemented".into(),
-    ))
+        let _ = client.stop_service(vm_id, "openclaw", None).await;
+        client
+            .start_service(vm_id, "openclaw")
+            .await
+            .map_err(|e| ApiError::Internal(format!("failed to start service: {e}")))?;
+
+        Ok(StatusCode::NO_CONTENT)
+    } else if vps.provider == "hetzner" {
+        // Hetzner: restart via provider API (reboot the server)
+        let provider_name: cb_infra::ProviderName = "hetzner"
+            .parse()
+            .map_err(|_| ApiError::Internal("unknown provider".into()))?;
+        let provider = state
+            .providers
+            .get(provider_name)
+            .ok_or_else(|| ApiError::Internal("hetzner provider not configured".into()))?;
+
+        let vm_id = vps
+            .provider_vm_id
+            .as_deref()
+            .ok_or_else(|| ApiError::Internal("VPS has no provider VM ID".into()))?;
+
+        // Stop + start = restart
+        let _ = provider.stop_vps(&cb_infra::types::VpsId(vm_id.to_string())).await;
+        provider
+            .start_vps(&cb_infra::types::VpsId(vm_id.to_string()))
+            .await?;
+
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        let _ = (agent.gateway_token, GATEWAY_PORT);
+        Err(ApiError::Internal(
+            "restart not yet implemented for this provider".into(),
+        ))
+    }
 }
 
 /// GET /agents/{id}/health
 ///
-/// Check gateway health via its HTTP health endpoint.
+/// Check gateway health.
+/// For sprites: check sprite + service state via API.
+/// For other providers: HTTP health check against gateway.
 #[derive(Serialize)]
 pub struct AgentHealthResponse {
     pub gateway_reachable: bool,
@@ -195,19 +306,37 @@ pub async fn agent_health(
     Path(agent_id): Path<Uuid>,
 ) -> Result<Json<AgentHealthResponse>, ApiError> {
     let (agent, vps) = get_running_agent_vps(&state, user_id.0, agent_id).await?;
-    let address = vps_address(&vps)?;
 
-    // Health check via gateway's own HTTP endpoint.
-    // The gateway serves the Control UI at GET / on its main port.
-    let reachable = reqwest::Client::new()
-        .get(format!("http://{address}:{GATEWAY_PORT}/"))
-        .bearer_auth(&agent.gateway_token)
-        .timeout(std::time::Duration::from_secs(5))
-        .send()
-        .await
-        .is_ok_and(|r| r.status().is_success() || r.status().is_redirection());
+    if vps.provider == "sprites" {
+        let client = sprites_client(&state)?;
+        let vm_id = vps
+            .provider_vm_id
+            .as_deref()
+            .ok_or_else(|| ApiError::Internal("VPS has no provider VM ID".into()))?;
 
-    Ok(Json(AgentHealthResponse {
-        gateway_reachable: reachable,
-    }))
+        let reachable = match client.get_service(vm_id, "openclaw").await {
+            Ok(service) => service
+                .state
+                .as_ref()
+                .is_some_and(|s| s.status == "running"),
+            Err(_) => false,
+        };
+
+        Ok(Json(AgentHealthResponse {
+            gateway_reachable: reachable,
+        }))
+    } else {
+        let address = vps_address(&vps)?;
+        let reachable = reqwest::Client::new()
+            .get(format!("http://{address}:{GATEWAY_PORT}/"))
+            .bearer_auth(&agent.gateway_token)
+            .timeout(std::time::Duration::from_secs(5))
+            .send()
+            .await
+            .is_ok_and(|r| r.status().is_success() || r.status().is_redirection());
+
+        Ok(Json(AgentHealthResponse {
+            gateway_reachable: reachable,
+        }))
+    }
 }

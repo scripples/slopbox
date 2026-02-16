@@ -65,5 +65,8 @@ futures-util = "0.3"
 hmac = "0.12"
 sha2 = "0.10"
 
+# JWT
+jsonwebtoken = "9"
+
 # Misc
 async-trait = "0.1"

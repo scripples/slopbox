@@ -1,3 +1,4 @@
+pub mod admin;
 pub mod agents;
 pub mod channels;
 pub mod config;
@@ -10,11 +11,25 @@ use axum::Router;
 use axum::middleware;
 use axum::routing::{delete, get, post, put};
 
-use crate::auth::auth_middleware;
+use crate::auth::{admin_middleware, auth_middleware, status_middleware};
 use crate::state::AppState;
 
 pub fn api_router(state: AppState) -> Router {
-    let authed = Router::new()
+    // Admin routes — require admin role
+    let admin_routes = Router::new()
+        .route("/admin/users", get(admin::list_users))
+        .route("/admin/users/{id}/status", put(admin::set_user_status))
+        .route("/admin/users/{id}/role", put(admin::set_user_role))
+        .route("/admin/vpses", get(admin::list_vpses))
+        .route("/admin/vpses/{id}/stop", post(admin::stop_vps))
+        .route("/admin/vpses/{id}/destroy", post(admin::destroy_vps))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            admin_middleware,
+        ));
+
+    // Routes that require active status
+    let active_routes = Router::new()
         // Agents
         .route("/agents", post(agents::create_agent).get(agents::list_agents))
         .route(
@@ -52,15 +67,24 @@ pub fn api_router(state: AppState) -> Router {
             "/users/me/overage-budget",
             get(usage::get_overage_budget).put(usage::set_overage_budget),
         )
-        // Users
-        .route("/users/me", get(users::get_me))
-        // Plans
-        .route("/plans", get(plans::list_plans))
-        // Auth middleware
+        // Status middleware — rejects non-active users (applied first, runs second)
         .layer(middleware::from_fn_with_state(
             state.clone(),
-            auth_middleware,
+            status_middleware,
         ));
+
+    // Routes accessible to any authenticated user (including pending)
+    let authed_routes = Router::new()
+        .route("/users/me", get(users::get_me))
+        .route("/plans", get(plans::list_plans))
+        .merge(active_routes)
+        .merge(admin_routes);
+
+    // All authed routes get auth middleware
+    let authed = authed_routes.layer(middleware::from_fn_with_state(
+        state.clone(),
+        auth_middleware,
+    ));
 
     let gateway = crate::gateway_proxy::gateway_router();
 

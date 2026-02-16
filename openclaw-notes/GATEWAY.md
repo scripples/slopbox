@@ -154,9 +154,9 @@ These tools always run inside the gateway process, regardless of sandbox config:
 **These tools bypass the sandbox entirely.** They execute with full gateway
 privileges — access to host env vars, credentials, network, and filesystem.
 This is why `gateway`, `cron`, and `nodes` must be on the tool deny list for
-Cludbox VMs.
+Slopbox VMs.
 
-**Critical for Cludbox:** `web_search` and `web_fetch` make outbound HTTP
+**Critical for Slopbox:** `web_search` and `web_fetch` make outbound HTTP
 requests FROM THE GATEWAY PROCESS. They are NOT affected by
 `docker.network=none`. Even with full sandbox enabled, these tools can reach
 the internet. This is the agent's legitimate path to external information, but
@@ -169,7 +169,7 @@ mode, `exec` runs on the gateway host instead of the sandbox. This is a
 deliberate escape hatch — disabled by default, must be explicitly enabled, and
 is gated by sender allowlists.
 
-**Must be disabled for Cludbox** (`tools.elevated.enabled: false`).
+**Must be disabled for Slopbox** (`tools.elevated.enabled: false`).
 
 ### 3. LLM provider API calls (agent → model)
 
@@ -200,7 +200,7 @@ Tool calls extracted from model response
     │  results fed back to model for next turn
 ```
 
-**Key insight for Cludbox:** LLM API keys live on the gateway host (env vars
+**Key insight for Slopbox:** LLM API keys live on the gateway host (env vars
 or `auth-profiles.json`). The sandbox cannot see them. But the gateway process
 needs them to function. Options for secret management:
 - Inject as host env vars at provision time (simplest, safe with sandbox)
@@ -220,11 +220,11 @@ needs them to function. Options for secret management:
 | Docker container runtime | Tool dispatch | Gateway → Docker IPC | Local container API |
 | Companion nodes | `nodes`/`canvas` tools | Gateway process | WebSocket (LAN/Tailscale) |
 | Browser (CDP) | `browser` tool | Gateway process (default) | Local CDP connection (:18791+) |
-| Control plane (Cludbox) | Gateway RPC | Gateway process | Inbound WebSocket from cb-api (config.patch, /tools/invoke) |
+| Control plane (Slopbox) | Gateway RPC | Gateway process | Inbound WebSocket from cb-api (config.patch, /tools/invoke) |
 
-### 5. Cludbox-specific communication topology
+### 5. Slopbox-specific communication topology
 
-On a Cludbox VM, the full picture looks like this:
+On a Slopbox VM, the full picture looks like this:
 
 ```
                     Internet
@@ -327,7 +327,7 @@ Full-duplex WebSocket RPC
 
 #### What the UI can do
 
-| Capability | RPC methods | Security concern for Cludbox |
+| Capability | RPC methods | Security concern for Slopbox |
 |-----------|-------------|------------------------------|
 | **Chat** | `chat.send`, `chat.history`, `chat.inject` | **Safe.** Primary user interaction. Messages go through agent pipeline with full sandbox + tool policy. |
 | **Stream tool output** | Event subscription (`agent`, `chat` events) | **Safe.** Read-only observation of agent runs with live output cards. |
@@ -342,9 +342,9 @@ Full-duplex WebSocket RPC
 | **Log tailing** | `logs.tail` | **Caution.** Read-only but may expose sensitive data in logs. |
 | **System status** | `status`, `health`, `models.list` | **Safe.** Read-only. |
 
-#### Cludbox implications
+#### Slopbox implications
 
-For Cludbox, the Control UI is the user's web-based chat interface. It must be
+For Slopbox, the Control UI is the user's web-based chat interface. It must be
 exposed (via reverse proxy, Tailscale Serve, or direct binding) but several
 RPC methods must be restricted:
 
@@ -360,7 +360,7 @@ attack surface.
 agent event streaming.
 
 **Resolved:** OpenClaw does not support per-method RPC authorization natively.
-Cludbox uses a reverse proxy (`cb-api/src/gateway_proxy.rs`) that inspects
+Slopbox uses a reverse proxy (`cb-api/src/gateway_proxy.rs`) that inspects
 WebSocket text frames and filters RPC methods. See the "Transport: HTTP vs
 WebSocket" section above for details on how frame interception works.
 
@@ -423,7 +423,7 @@ or a reverse proxy.
 
 ### WebSocket frame interception at a reverse proxy
 
-For Cludbox, the cb-api gateway proxy terminates TLS from users and connects
+For Slopbox, the cb-api gateway proxy terminates TLS from users and connects
 to the gateway over plain `ws://` on loopback. This makes WebSocket frame
 inspection straightforward:
 
@@ -475,7 +475,7 @@ OpenClaw gateway (:18789, bound to 127.0.0.1)
 - Bidirectional: The proxy can also filter gateway-to-client events (e.g.,
   suppress `logs.tail` output) but this is not currently implemented.
 
-### Recommended gateway config for Cludbox VMs
+### Recommended gateway config for Slopbox VMs
 
 ```json
 {
@@ -489,7 +489,7 @@ OpenClaw gateway (:18789, bound to 127.0.0.1)
 }
 ```
 
-The Control UI is disabled because users access the agent through the Cludbox
+The Control UI is disabled because users access the agent through the Slopbox
 web app (which proxies WebSocket RPC through cb-api with method filtering).
 The gateway token is injected by the control plane at provision time and never
 exposed to users.
@@ -706,7 +706,7 @@ Disable: `gateway.bonjour.mode: "off"` or `OPENCLAW_DISABLE_BONJOUR=1`
 
 ---
 
-## Cludbox Security Analysis
+## Slopbox Security Analysis
 
 ### Endpoints that grant direct host access
 
@@ -728,9 +728,9 @@ Disable: `gateway.bonjour.mode: "off"` or `OPENCLAW_DISABLE_BONJOUR=1`
 | `POST /hooks/agent` | Same — triggers agent run with standard policies |
 | `chat.send` RPC | Same — triggers agent processing |
 
-### Endpoints we should disable/restrict for Cludbox
+### Endpoints we should disable/restrict for Slopbox
 
-For maximum security on Cludbox VPS images:
+For maximum security on Slopbox VPS images:
 
 ```json5
 {
@@ -758,6 +758,6 @@ With `sandbox.docker.network=none`, the Docker container has:
 - No ability to call any HTTP/WebSocket endpoint
 
 The agent's ONLY communication path is through the OpenClaw channel system —
-specifically our cludbox channel extension running in the unsandboxed gateway
+specifically our slopbox channel extension running in the unsandboxed gateway
 process. This extension is the sole bridge between the sandboxed agent and the
 outside world.

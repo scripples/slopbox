@@ -25,7 +25,8 @@ reqwest = { workspace = true }
 
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tower = { version = "0.5", features = ["util"] }
-tower-http = { version = "0.6", features = ["trace"] }
+tower-http = { version = "0.6", features = ["trace", "cors"] }
+jsonwebtoken = { workspace = true }
 
 tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
@@ -35,4 +36,5 @@ sha2 = { workspace = true }
 cb-db = { path = "../cb-db" }
 
 cb-infra = { path = "../cb-infra" }
+sprites-api = { path = "../sprites-api" }
 

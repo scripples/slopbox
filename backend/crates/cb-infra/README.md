@@ -1,6 +1,6 @@
 # cb-infra
 
-Provider-agnostic VPS management for Cludbox.
+Provider-agnostic VPS management for Slopbox.
 
 ## Purpose
 
@@ -56,7 +56,7 @@ Uses the `fly-api` crate to manage Fly Machines.
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `FLY_API_TOKEN` | Yes | — | Fly.io API token |
-| `FLY_APP_NAME` | No | `cludbox-agents` | Fly app for machines |
+| `FLY_APP_NAME` | No | `slopbox-agents` | Fly app for machines |
 | `FLY_REGION` | No | `iad` | Default region |
 
 ### CPU Mapping
@@ -103,7 +103,7 @@ Maps `cpu_millicores` to Hetzner server types:
 ### Notes
 
 - VPSes created with `ubuntu-24.04` image + cloud-init user data (not `spec.image`).
-- Cloud-init writes env vars to `/etc/cludbox/env` and files to their `guest_path`, then starts `cludbox-agent` systemd service.
+- Cloud-init writes env vars to `/etc/slopbox/env` and files to their `guest_path`, then starts `slopbox-agent` systemd service.
 - VPS address derived from private network IP.
 - Deletes handle 404 gracefully.
 

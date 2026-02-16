@@ -13,3 +13,4 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 
 fly-api = { path = "../fly-api" }
+sprites-api = { path = "../sprites-api" }

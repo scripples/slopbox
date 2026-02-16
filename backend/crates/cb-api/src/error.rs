@@ -15,6 +15,9 @@ pub enum ApiError {
     #[error("unauthorized")]
     Unauthorized,
 
+    #[error("forbidden: {0}")]
+    Forbidden(String),
+
     #[error("conflict: {0}")]
     Conflict(String),
 
@@ -35,6 +38,7 @@ impl IntoResponse for ApiError {
             ApiError::LimitExceeded(_) => StatusCode::FORBIDDEN,
             ApiError::BadRequest(_) => StatusCode::BAD_REQUEST,
             ApiError::Unauthorized => StatusCode::UNAUTHORIZED,
+            ApiError::Forbidden(_) => StatusCode::FORBIDDEN,
             ApiError::Conflict(_) => StatusCode::CONFLICT,
             ApiError::Database(sqlx::Error::RowNotFound) => StatusCode::NOT_FOUND,
             ApiError::Database(_) => StatusCode::INTERNAL_SERVER_ERROR,
