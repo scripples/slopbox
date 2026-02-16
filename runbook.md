@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - A GitHub repo with this codebase pushed
-- A domain (e.g. `slopbox.dev`) with DNS you control
+- (Optional) A custom domain — not required; Fly provides `slopbox-api.fly.dev` and Vercel provides `<project>.vercel.app`
 - `flyctl` CLI installed (`brew install flyctl` / `curl -L https://fly.io/install.sh | sh`)
 - A Hetzner Cloud account (https://console.hetzner.cloud)
 - `hcloud` CLI installed (`brew install hcloud`)
@@ -41,7 +41,7 @@ fly postgres attach slopbox-db -a slopbox-api --database-name slopbox
 fly secrets set -a slopbox-api \
   JWT_SECRET="$(openssl rand -hex 32)" \
   HETZNER_API_TOKEN="<from Phase 3>" \
-  FRONTEND_ORIGIN="https://your-frontend.vercel.app"
+  FRONTEND_ORIGIN="https://your-frontend.vercel.app"   # or https://yourdomain.com if using custom domain
 
 # 4. First deploy (from backend/ directory)
 cd backend
@@ -169,8 +169,8 @@ Not managed by GitHub Actions. Connect the repo to Vercel:
 3. Set environment variables:
    - `CONTROL_PLANE_API_KEY` — shared secret for BFF → backend auth
    - `NEXTAUTH_SECRET` — `openssl rand -hex 32`
-   - `NEXTAUTH_URL` — `https://your-app.vercel.app`
-   - `CONTROL_PLANE_URL` — `https://slopbox-api.fly.dev`
+   - `NEXTAUTH_URL` — `https://your-app.vercel.app` (or `https://yourdomain.com`)
+   - `CONTROL_PLANE_URL` — `https://slopbox-api.fly.dev` (or `https://api.yourdomain.com`)
 4. Vercel auto-deploys on push to `main`
 
 Also set the matching secret on the backend:
@@ -193,7 +193,7 @@ fly secrets set -a slopbox-api CONTROL_PLANE_API_KEY="<same-key-as-vercel>"
 | `HETZNER_FIREWALL_ID` | Hetzner Console → Firewalls | No |
 | `HETZNER_NETWORK_ID` | Hetzner Console → Networks | No |
 | `HETZNER_SSH_KEY_NAMES` | Hetzner Console → SSH Keys | No |
-| `FRONTEND_ORIGIN` | Your Vercel URL | Yes (for CORS) |
+| `FRONTEND_ORIGIN` | Your Vercel URL or custom domain | Yes (for CORS) |
 | `CONTROL_PLANE_API_KEY` | Shared with frontend | Yes (for BFF auth) |
 
 ### GitHub Secrets (Repo → Settings → Secrets)
@@ -208,8 +208,8 @@ fly secrets set -a slopbox-api CONTROL_PLANE_API_KEY="<same-key-as-vercel>"
 |---|---|
 | `CONTROL_PLANE_API_KEY` | Same as Fly secret |
 | `NEXTAUTH_SECRET` | `openssl rand -hex 32` |
-| `NEXTAUTH_URL` | Your Vercel URL |
-| `CONTROL_PLANE_URL` | `https://slopbox-api.fly.dev` |
+| `NEXTAUTH_URL` | Your Vercel URL (or custom domain) |
+| `CONTROL_PLANE_URL` | `https://slopbox-api.fly.dev` (or `https://api.yourdomain.com`) |
 
 ---
 
@@ -217,7 +217,7 @@ fly secrets set -a slopbox-api CONTROL_PLANE_API_KEY="<same-key-as-vercel>"
 
 ```bash
 # Backend is running
-curl https://slopbox-api.fly.dev          # should respond (or 404, not connection refused)
+curl https://slopbox-api.fly.dev          # or your custom domain; should respond (or 404, not connection refused)
 
 # Logs show successful startup
 fly logs -a slopbox-api
