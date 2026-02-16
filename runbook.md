@@ -156,7 +156,7 @@ fly tokens create deploy -a slopbox-api
 #    Value: <the token from step 1>
 ```
 
-After this, every push to `main` that touches `backend/**` will auto-deploy.
+After this, every push to `master` that touches `backend/**` will auto-deploy.
 
 ---
 
@@ -171,7 +171,7 @@ Not managed by GitHub Actions. Connect the repo to Vercel:
    - `NEXTAUTH_SECRET` — `openssl rand -hex 32`
    - `NEXTAUTH_URL` — `https://your-app.vercel.app` (or `https://yourdomain.com`)
    - `CONTROL_PLANE_URL` — `https://slopbox-api.fly.dev` (or `https://api.yourdomain.com`)
-4. Vercel auto-deploys on push to `main`
+4. Vercel auto-deploys on push to `master`
 
 Also set the matching secret on the backend:
 ```bash

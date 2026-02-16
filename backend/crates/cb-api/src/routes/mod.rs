@@ -8,6 +8,7 @@ pub mod users;
 pub mod vps;
 
 use axum::Router;
+use axum::http::StatusCode;
 use axum::middleware;
 use axum::routing::{delete, get, post, put};
 
@@ -89,6 +90,7 @@ pub fn api_router(state: AppState) -> Router {
     let gateway = crate::gateway_proxy::gateway_router();
 
     Router::new()
+        .route("/health", get(|| async { StatusCode::OK }))
         .merge(authed)
         .merge(gateway)
         .with_state(state)
