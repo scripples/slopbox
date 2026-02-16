@@ -31,7 +31,6 @@ jobs:
 
       - run: cargo fmt --check
       - run: cargo clippy --workspace -- -D warnings
-      - run: cargo check --workspace
 
   deploy:
     needs: check
