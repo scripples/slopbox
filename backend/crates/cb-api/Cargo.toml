@@ -1,0 +1,38 @@
+[package]
+name = "cb-api"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+axum = { workspace = true, features = ["ws"] }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+dotenvy = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+
+hyper = { workspace = true }
+hyper-util = { workspace = true }
+http-body-util = { workspace = true }
+base64 = { workspace = true }
+reqwest = { workspace = true }
+
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["trace"] }
+
+tokio-tungstenite = { workspace = true }
+futures-util = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
+
+cb-db = { path = "../cb-db" }
+
+cb-infra = { path = "../cb-infra" }
+

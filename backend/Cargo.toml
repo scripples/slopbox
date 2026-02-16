@@ -1,0 +1,69 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/cb-api",
+    "crates/cb-db",
+    "crates/cb-infra",
+
+    "crates/fly-api",
+    "crates/sprites-api",
+]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "AGPL-3.0-or-later"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "migrate"] }
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json"] }
+
+# Hetzner Cloud
+hcloud = "0.25"
+
+# Observability
+tracing = "0.1"
+
+# Error handling
+thiserror = "2"
+
+# Config
+dotenvy = "0.15"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# IDs
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Web framework
+axum = "0.8"
+
+# HTTP server (raw hyper for forward proxy)
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio", "server-auto"] }
+http-body-util = "0.1"
+
+# Encoding
+base64 = "0.22"
+
+# WebSocket
+tokio-tungstenite = "0.26"
+futures-util = "0.3"
+
+# Crypto
+hmac = "0.12"
+sha2 = "0.10"
+
+# Misc
+async-trait = "0.1"

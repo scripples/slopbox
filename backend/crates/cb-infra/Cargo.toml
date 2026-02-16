@@ -1,0 +1,15 @@
+[package]
+name = "cb-infra"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+dotenvy = { workspace = true }
+serde = { workspace = true }
+hcloud = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+fly-api = { path = "../fly-api" }
