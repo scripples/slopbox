@@ -7,6 +7,10 @@ on:
   pull_request:
     paths: [backend/**]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -28,3 +32,22 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --workspace -- -D warnings
       - run: cargo check --workspace
+
+  deploy:
+    needs: check
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-backend
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
