@@ -57,17 +57,28 @@ impl FlyClient {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(Error::Api { endpoint, status, body });
+            return Err(Error::Api {
+                endpoint,
+                status,
+                body,
+            });
         }
         Ok(resp)
     }
 
     /// Like `check` but also treats 404 as success (for delete idempotency).
-    async fn check_allow_404(resp: reqwest::Response, endpoint: &'static str) -> Result<reqwest::Response> {
+    async fn check_allow_404(
+        resp: reqwest::Response,
+        endpoint: &'static str,
+    ) -> Result<reqwest::Response> {
         let status = resp.status();
         if !status.is_success() && status.as_u16() != 404 {
             let body = resp.text().await.unwrap_or_default();
-            return Err(Error::Api { endpoint, status, body });
+            return Err(Error::Api {
+                endpoint,
+                status,
+                body,
+            });
         }
         Ok(resp)
     }

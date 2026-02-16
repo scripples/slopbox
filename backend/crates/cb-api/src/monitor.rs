@@ -57,10 +57,7 @@ pub fn spawn_monitor(
     });
 }
 
-async fn poll_metrics(
-    pool: &PgPool,
-    collector: &dyn MetricsCollector,
-) -> Result<(), BoxError> {
+async fn poll_metrics(pool: &PgPool, collector: &dyn MetricsCollector) -> Result<(), BoxError> {
     let running = Vps::list_by_state(pool, VpsState::Running).await?;
     for vps in &running {
         let metering = cb_infra::metered_resources_for(&vps.provider);
@@ -92,7 +89,8 @@ async fn poll_metrics(
 
                 // Upsert deltas into the period table
                 if (cpu_delta > 0 || mem_delta > 0)
-                    && let Err(e) = VpsUsagePeriod::add_cpu_memory(pool, vps.id, cpu_delta, mem_delta).await
+                    && let Err(e) =
+                        VpsUsagePeriod::add_cpu_memory(pool, vps.id, cpu_delta, mem_delta).await
                 {
                     tracing::error!(vps_id = %vps.id, error = %e, "failed to write period metrics");
                 }
@@ -122,16 +120,16 @@ async fn poll_metrics(
 ///
 /// Currently only acts on Hetzner VPSes (fixed-allocation providers where stopping
 /// the server saves money). Fly VPSes are gated per-request by the proxy.
-async fn enforce_limits(
-    pool: &PgPool,
-    providers: &ProviderRegistry,
-) -> Result<(), BoxError> {
+async fn enforce_limits(pool: &PgPool, providers: &ProviderRegistry) -> Result<(), BoxError> {
     let running = Vps::list_by_state(pool, VpsState::Running).await?;
 
     // Collect distinct users who have running Hetzner VPSes
     let hetzner_users: HashSet<uuid::Uuid> = running
         .iter()
-        .filter(|v| v.provider.parse::<cb_infra::ProviderName>().ok() == Some(cb_infra::ProviderName::Hetzner))
+        .filter(|v| {
+            v.provider.parse::<cb_infra::ProviderName>().ok()
+                == Some(cb_infra::ProviderName::Hetzner)
+        })
         .map(|v| v.user_id)
         .collect();
 
@@ -200,7 +198,8 @@ async fn enforce_limits(
         for vps in running.iter().filter(|v| {
             v.user_id == *user_id
                 && v.state == VpsState::Running
-                && v.provider.parse::<cb_infra::ProviderName>().ok() == Some(cb_infra::ProviderName::Hetzner)
+                && v.provider.parse::<cb_infra::ProviderName>().ok()
+                    == Some(cb_infra::ProviderName::Hetzner)
         }) {
             let vm_id = match &vps.provider_vm_id {
                 Some(id) => cb_infra::types::VpsId(id.clone()),
@@ -229,7 +228,8 @@ async fn enforce_limits(
     // Stub for future non-Hetzner enforcement
     for vps in running.iter().filter(|v| {
         v.provider.parse::<cb_infra::ProviderName>().ok() != Some(cb_infra::ProviderName::Hetzner)
-            && v.provider.parse::<cb_infra::ProviderName>().ok() != Some(cb_infra::ProviderName::Fly)
+            && v.provider.parse::<cb_infra::ProviderName>().ok()
+                != Some(cb_infra::ProviderName::Fly)
     }) {
         tracing::debug!(
             vps_id = %vps.id,

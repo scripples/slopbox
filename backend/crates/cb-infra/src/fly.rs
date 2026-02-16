@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use tracing::info;
 
-use crate::{Error, ProviderName, Result, VpsProvider};
 use crate::types::{VpsId, VpsInfo, VpsSpec, VpsState};
+use crate::{Error, ProviderName, Result, VpsProvider};
 
 /// Fly.io Machines API provider.
 ///

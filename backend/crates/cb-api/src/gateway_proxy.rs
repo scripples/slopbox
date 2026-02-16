@@ -3,8 +3,8 @@ use std::sync::atomic::{AtomicI64, Ordering};
 
 use axum::Router;
 use axum::body::Body;
-use axum::extract::{Path, State, WebSocketUpgrade};
 use axum::extract::ws::{Message, WebSocket};
+use axum::extract::{Path, State, WebSocketUpgrade};
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{any, get};
@@ -35,8 +35,8 @@ fn is_blocked_method(method: &str) -> bool {
 // ── HMAC nonce signing ──────────────────────────────────────────────
 
 fn sign_nonce(nonce: &str, token: &str) -> String {
-    let mut mac = Hmac::<Sha256>::new_from_slice(token.as_bytes())
-        .expect("HMAC accepts any key size");
+    let mut mac =
+        Hmac::<Sha256>::new_from_slice(token.as_bytes()).expect("HMAC accepts any key size");
     mac.update(nonce.as_bytes());
     let result = mac.finalize().into_bytes();
     result.iter().map(|b| format!("{b:02x}")).collect()
@@ -152,8 +152,8 @@ async fn proxy_http(
         .await
         .map_err(|e| ApiError::Internal(format!("upstream request failed: {e}")))?;
 
-    let status = StatusCode::from_u16(upstream_resp.status().as_u16())
-        .unwrap_or(StatusCode::BAD_GATEWAY);
+    let status =
+        StatusCode::from_u16(upstream_resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
 
     let resp_headers = upstream_resp.headers().clone();
 
@@ -194,7 +194,9 @@ async fn proxy_http(
 async fn proxy_ws(
     State(state): State<AppState>,
     Path(agent_id): Path<Uuid>,
-    axum::extract::Query(query_params): axum::extract::Query<std::collections::HashMap<String, String>>,
+    axum::extract::Query(query_params): axum::extract::Query<
+        std::collections::HashMap<String, String>,
+    >,
     headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Result<Response, ApiError> {
@@ -210,21 +212,14 @@ async fn proxy_ws(
                 .join("&"),
         )
     };
-    let target = resolve_gateway_target(
-        &headers,
-        query_string.as_deref(),
-        &state,
-        agent_id,
-    )
-    .await?;
+    let target =
+        resolve_gateway_target(&headers, query_string.as_deref(), &state, agent_id).await?;
     let address = target.vps.address.clone().unwrap();
     let gateway_token = target.agent.gateway_token.clone();
     let vps_id = target.vps.id;
     let db = state.db.clone();
 
-    Ok(ws.on_upgrade(move |client_ws| {
-        ws_relay(client_ws, address, gateway_token, vps_id, db)
-    }))
+    Ok(ws.on_upgrade(move |client_ws| ws_relay(client_ws, address, gateway_token, vps_id, db)))
 }
 
 async fn ws_relay(
@@ -284,15 +279,11 @@ async fn ws_relay(
                     break;
                 }
                 tokio_tungstenite::tungstenite::Message::Ping(p) => {
-                    let _ = client_tx_up
-                        .send(Message::Ping(p.to_vec().into()))
-                        .await;
+                    let _ = client_tx_up.send(Message::Ping(p.to_vec().into())).await;
                     continue;
                 }
                 tokio_tungstenite::tungstenite::Message::Pong(p) => {
-                    let _ = client_tx_up
-                        .send(Message::Pong(p.to_vec().into()))
-                        .await;
+                    let _ = client_tx_up.send(Message::Pong(p.to_vec().into())).await;
                     continue;
                 }
                 _ => continue,
@@ -334,10 +325,7 @@ async fn ws_relay(
 
                     // Parse as JSON for filtering / handshake interception
                     if let Ok(mut json) = serde_json::from_str::<serde_json::Value>(text_str) {
-                        let method = json
-                            .get("method")
-                            .and_then(|m| m.as_str())
-                            .unwrap_or("");
+                        let method = json.get("method").and_then(|m| m.as_str()).unwrap_or("");
 
                         // Handshake interception: replace auth token + recompute nonce
                         if !hs_done.load(Ordering::Relaxed) && method == "connect" {
@@ -348,16 +336,12 @@ async fn ws_relay(
                                 {
                                     a.insert(
                                         "token".into(),
-                                        serde_json::Value::String(
-                                            gateway_token.clone(),
-                                        ),
+                                        serde_json::Value::String(gateway_token.clone()),
                                     );
                                 }
 
                                 // Recompute signedNonce if present
-                                if let Some(nonce) =
-                                    params.get("nonce").and_then(|n| n.as_str())
-                                {
+                                if let Some(nonce) = params.get("nonce").and_then(|n| n.as_str()) {
                                     let signed = sign_nonce(nonce, &gateway_token);
                                     if let Some(p) = params.as_object_mut() {
                                         p.insert(
@@ -396,18 +380,16 @@ async fn ws_relay(
                     }
 
                     // Forward unmodified
-                    let tung_msg = tokio_tungstenite::tungstenite::Message::Text(
-                        text.to_string().into(),
-                    );
+                    let tung_msg =
+                        tokio_tungstenite::tungstenite::Message::Text(text.to_string().into());
                     if upstream_write.send(tung_msg).await.is_err() {
                         break;
                     }
                 }
                 Message::Binary(data) => {
                     bw_client.fetch_add(data.len() as i64, Ordering::Relaxed);
-                    let tung_msg = tokio_tungstenite::tungstenite::Message::Binary(
-                        data.to_vec().into(),
-                    );
+                    let tung_msg =
+                        tokio_tungstenite::tungstenite::Message::Binary(data.to_vec().into());
                     if upstream_write.send(tung_msg).await.is_err() {
                         break;
                     }

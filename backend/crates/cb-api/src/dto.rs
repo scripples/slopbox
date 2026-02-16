@@ -1,5 +1,5 @@
-use chrono::{DateTime, NaiveDate, Utc};
 use cb_db::models::{Agent, Plan, User, UserRole, UserStatus, Vps, VpsState};
+use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

@@ -1,9 +1,7 @@
 use std::env;
 
 use async_trait::async_trait;
-use sprites_api::{
-    CreateServiceRequest, CreateSpriteRequest, SpritesClient, SpriteStatus,
-};
+use sprites_api::{CreateServiceRequest, CreateSpriteRequest, SpriteStatus, SpritesClient};
 
 use crate::types::{FileMount, VpsId, VpsInfo, VpsSpec, VpsState};
 use crate::{Error, ProviderName, Result, VpsProvider};
@@ -84,11 +82,8 @@ impl SpritesProvider {
 
     /// Install OpenClaw via npm.
     async fn install_openclaw(&self, sprite: &str) -> Result<()> {
-        self.exec_checked(
-            sprite,
-            &["npm", "install", "-g", "@anthropic/openclaw"],
-        )
-        .await?;
+        self.exec_checked(sprite, &["npm", "install", "-g", "@anthropic/openclaw"])
+            .await?;
         Ok(())
     }
 }
@@ -124,9 +119,7 @@ impl VpsProvider for SpritesProvider {
     }
 
     async fn stop_vps(&self, id: &VpsId) -> Result<()> {
-        self.client
-            .stop_service(&id.0, SERVICE_NAME, None)
-            .await?;
+        self.client.stop_service(&id.0, SERVICE_NAME, None).await?;
         Ok(())
     }
 
@@ -183,8 +176,16 @@ impl SpritesProvider {
         self.install_openclaw(name).await?;
 
         // 4. Create directories and write files
-        tracing::info!(sprite = name, files = spec.files.len(), "writing config files");
-        for FileMount { guest_path, raw_value } in &spec.files {
+        tracing::info!(
+            sprite = name,
+            files = spec.files.len(),
+            "writing config files"
+        );
+        for FileMount {
+            guest_path,
+            raw_value,
+        } in &spec.files
+        {
             // Ensure parent directory exists
             if let Some(parent) = guest_path.rsplit_once('/').map(|(p, _)| p)
                 && !parent.is_empty()
@@ -196,13 +197,15 @@ impl SpritesProvider {
 
         // 5. Write env vars file
         if !spec.env.is_empty() {
-            self.exec_checked(name, &["mkdir", "-p", "/etc/slopbox"]).await?;
+            self.exec_checked(name, &["mkdir", "-p", "/etc/slopbox"])
+                .await?;
             let env_content: String = spec
                 .env
                 .iter()
                 .map(|(k, v)| format!("export {k}={v}\n"))
                 .collect();
-            self.write_file(name, "/etc/slopbox/env", &env_content).await?;
+            self.write_file(name, "/etc/slopbox/env", &env_content)
+                .await?;
         }
 
         // 6. Create and start the openclaw service
@@ -214,12 +217,16 @@ impl SpritesProvider {
         };
 
         self.client
-            .create_service(name, SERVICE_NAME, &CreateServiceRequest {
-                cmd: "sh".into(),
-                args: vec!["-c".into(), cmd],
-                needs: vec![],
-                http_port: Some(GATEWAY_PORT),
-            })
+            .create_service(
+                name,
+                SERVICE_NAME,
+                &CreateServiceRequest {
+                    cmd: "sh".into(),
+                    args: vec!["-c".into(), cmd],
+                    needs: vec![],
+                    http_port: Some(GATEWAY_PORT),
+                },
+            )
             .await?;
 
         tracing::info!(sprite = name, "starting openclaw service");

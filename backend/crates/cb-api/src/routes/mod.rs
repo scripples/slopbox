@@ -32,7 +32,10 @@ pub fn api_router(state: AppState) -> Router {
     // Routes that require active status
     let active_routes = Router::new()
         // Agents
-        .route("/agents", post(agents::create_agent).get(agents::list_agents))
+        .route(
+            "/agents",
+            post(agents::create_agent).get(agents::list_agents),
+        )
         .route(
             "/agents/{id}",
             get(agents::get_agent).delete(agents::delete_agent),

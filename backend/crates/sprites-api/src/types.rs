@@ -184,10 +184,24 @@ pub struct CreateServiceRequest {
 #[serde(tag = "type")]
 #[serde(rename_all = "lowercase")]
 pub enum KillEvent {
-    Signal { message: String, signal: String, pid: i64 },
-    Timeout { message: String },
-    Exited { message: String },
-    Killed { message: String },
-    Error { message: String },
-    Complete { exit_code: i32 },
+    Signal {
+        message: String,
+        signal: String,
+        pid: i64,
+    },
+    Timeout {
+        message: String,
+    },
+    Exited {
+        message: String,
+    },
+    Killed {
+        message: String,
+    },
+    Error {
+        message: String,
+    },
+    Complete {
+        exit_code: i32,
+    },
 }

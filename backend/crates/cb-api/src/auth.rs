@@ -32,8 +32,7 @@ pub fn validate_jwt(token: &str, secret: &str) -> Result<UserId, ApiError> {
     let data = jsonwebtoken::decode::<JwtClaims>(token, &key, &validation)
         .map_err(|_| ApiError::Unauthorized)?;
 
-    let user_id = Uuid::parse_str(&data.claims.sub)
-        .map_err(|_| ApiError::Unauthorized)?;
+    let user_id = Uuid::parse_str(&data.claims.sub).map_err(|_| ApiError::Unauthorized)?;
 
     Ok(UserId(user_id))
 }

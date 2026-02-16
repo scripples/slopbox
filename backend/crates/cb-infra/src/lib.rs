@@ -97,10 +97,18 @@ pub struct MeteredResources {
 
 impl MeteredResources {
     /// All resources metered (elastic providers).
-    pub const ALL: Self = Self { bandwidth: true, cpu: true, memory: true };
+    pub const ALL: Self = Self {
+        bandwidth: true,
+        cpu: true,
+        memory: true,
+    };
 
     /// Only bandwidth metered (fixed-resource providers).
-    pub const BANDWIDTH_ONLY: Self = Self { bandwidth: true, cpu: false, memory: false };
+    pub const BANDWIDTH_ONLY: Self = Self {
+        bandwidth: true,
+        cpu: false,
+        memory: false,
+    };
 }
 
 /// Return metering policy for a provider identified by its name string.

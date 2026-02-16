@@ -88,9 +88,10 @@ pub struct HooksConfig {
 
 /// Build a locked-down OpenClaw config.
 pub fn build_openclaw_config(params: &ConfigParams) -> OpenClawConfig {
-    let deny = params.tools_deny.clone().unwrap_or_else(|| {
-        vec!["gateway".into(), "nodes".into()]
-    });
+    let deny = params
+        .tools_deny
+        .clone()
+        .unwrap_or_else(|| vec!["gateway".into(), "nodes".into()]);
 
     OpenClawConfig {
         agents: AgentsConfig {

@@ -1,6 +1,6 @@
+use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::Json;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -83,7 +83,9 @@ pub async fn list_users(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<AdminUserResponse>>, ApiError> {
     let users = User::list_all(&state.db).await?;
-    Ok(Json(users.into_iter().map(AdminUserResponse::from).collect()))
+    Ok(Json(
+        users.into_iter().map(AdminUserResponse::from).collect(),
+    ))
 }
 
 pub async fn set_user_status(
@@ -123,7 +125,9 @@ pub async fn list_vpses(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<AdminVpsResponse>>, ApiError> {
     let vpses = Vps::list_all(&state.db).await?;
-    Ok(Json(vpses.into_iter().map(AdminVpsResponse::from).collect()))
+    Ok(Json(
+        vpses.into_iter().map(AdminVpsResponse::from).collect(),
+    ))
 }
 
 pub async fn stop_vps(

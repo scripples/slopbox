@@ -276,7 +276,9 @@ pub async fn restart_agent(
             .ok_or_else(|| ApiError::Internal("VPS has no provider VM ID".into()))?;
 
         // Stop + start = restart
-        let _ = provider.stop_vps(&cb_infra::types::VpsId(vm_id.to_string())).await;
+        let _ = provider
+            .stop_vps(&cb_infra::types::VpsId(vm_id.to_string()))
+            .await;
         provider
             .start_vps(&cb_infra::types::VpsId(vm_id.to_string()))
             .await?;

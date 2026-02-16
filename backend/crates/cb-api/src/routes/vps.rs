@@ -35,9 +35,9 @@ pub async fn provision_vps(
 
     // Check VPS count limit
     let user = User::get_by_id(&state.db, user_id.0).await?;
-    let plan_id = user.plan_id.ok_or(ApiError::LimitExceeded(
-        "user has no plan".into(),
-    ))?;
+    let plan_id = user
+        .plan_id
+        .ok_or(ApiError::LimitExceeded("user has no plan".into()))?;
     let plan = Plan::get_by_id(&state.db, plan_id).await?;
 
     let vps_count = Vps::count_for_user(&state.db, user_id.0).await?;
@@ -60,11 +60,15 @@ pub async fn provision_vps(
 
     // Derive provider from VpsConfig
     let provider_name: ProviderName = vps_config.provider.parse().map_err(|_| {
-        ApiError::Internal(format!("unknown provider in VPS config: {}", vps_config.provider))
+        ApiError::Internal(format!(
+            "unknown provider in VPS config: {}",
+            vps_config.provider
+        ))
     })?;
-    let provider = state.providers.get(provider_name).ok_or_else(|| {
-        ApiError::BadRequest(format!("provider not available: {provider_name}"))
-    })?;
+    let provider = state
+        .providers
+        .get(provider_name)
+        .ok_or_else(|| ApiError::BadRequest(format!("provider not available: {provider_name}")))?;
 
     // Insert VPS in Provisioning state
     let vps_name = format!("agent-{}", agent_id);
@@ -82,10 +86,7 @@ pub async fn provision_vps(
 
     // Create VM
     let mut env = HashMap::new();
-    env.insert(
-        "OPENCLAW_GATEWAY_TOKEN".into(),
-        agent.gateway_token.clone(),
-    );
+    env.insert("OPENCLAW_GATEWAY_TOKEN".into(), agent.gateway_token.clone());
 
     // Proxy env vars — all outbound traffic flows through the control plane proxy
     let proxy_url = format!(
@@ -98,13 +99,12 @@ pub async fn provision_vps(
     env.insert("https_proxy".into(), proxy_url);
 
     // OpenClaw config + workspace files
-    let oc_config = crate::openclaw_config::build_openclaw_config(
-        &crate::openclaw_config::ConfigParams {
+    let oc_config =
+        crate::openclaw_config::build_openclaw_config(&crate::openclaw_config::ConfigParams {
             agent_id,
             model: None,
             tools_deny: None,
-        },
-    );
+        });
     let config_json = crate::openclaw_config::render_openclaw_config(&oc_config);
 
     let mut files = vec![cb_infra::types::FileMount {
@@ -154,7 +154,9 @@ pub async fn start_vps(
     if vps.state != VpsState::Stopped {
         return Err(ApiError::Conflict(format!(
             "VPS is {}, expected stopped",
-            serde_json::to_string(&vps.state).unwrap_or_default().trim_matches('"')
+            serde_json::to_string(&vps.state)
+                .unwrap_or_default()
+                .trim_matches('"')
         )));
     }
 
@@ -181,7 +183,9 @@ pub async fn stop_vps(
     if vps.state != VpsState::Running {
         return Err(ApiError::Conflict(format!(
             "VPS is {}, expected running",
-            serde_json::to_string(&vps.state).unwrap_or_default().trim_matches('"')
+            serde_json::to_string(&vps.state)
+                .unwrap_or_default()
+                .trim_matches('"')
         )));
     }
 
@@ -230,9 +234,10 @@ fn provider_for_vps<'a>(
     let name: ProviderName = vps.provider.parse().map_err(|_| {
         ApiError::Internal(format!("unknown provider in VPS record: {}", vps.provider))
     })?;
-    state.providers.get(name).ok_or_else(|| {
-        ApiError::Internal(format!("provider not configured: {name}"))
-    })
+    state
+        .providers
+        .get(name)
+        .ok_or_else(|| ApiError::Internal(format!("provider not configured: {name}")))
 }
 
 /// Helper: fetch agent + attached VPS, enforcing ownership.
@@ -249,9 +254,7 @@ async fn get_agent_vps(
         return Err(ApiError::NotFound);
     }
 
-    let vps_id = agent
-        .vps_id
-        .ok_or(ApiError::NotFound)?;
+    let vps_id = agent.vps_id.ok_or(ApiError::NotFound)?;
 
     let vps = Vps::get_by_id(&state.db, vps_id)
         .await

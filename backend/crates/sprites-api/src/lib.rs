@@ -55,16 +55,27 @@ impl SpritesClient {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(Error::Api { endpoint, status, body });
+            return Err(Error::Api {
+                endpoint,
+                status,
+                body,
+            });
         }
         Ok(resp)
     }
 
-    async fn check_allow_404(resp: reqwest::Response, endpoint: &'static str) -> Result<reqwest::Response> {
+    async fn check_allow_404(
+        resp: reqwest::Response,
+        endpoint: &'static str,
+    ) -> Result<reqwest::Response> {
         let status = resp.status();
         if !status.is_success() && status.as_u16() != 404 {
             let body = resp.text().await.unwrap_or_default();
-            return Err(Error::Api { endpoint, status, body });
+            return Err(Error::Api {
+                endpoint,
+                status,
+                body,
+            });
         }
         Ok(resp)
     }
@@ -134,11 +145,7 @@ impl SpritesClient {
             .map_err(Error::from)
     }
 
-    pub async fn update_sprite(
-        &self,
-        name: &str,
-        req: &UpdateSpriteRequest,
-    ) -> Result<Sprite> {
+    pub async fn update_sprite(&self, name: &str, req: &UpdateSpriteRequest) -> Result<Sprite> {
         let resp = self
             .http
             .put(self.url(&format!("/sprites/{name}")))
@@ -291,11 +298,7 @@ impl SpritesClient {
             .map_err(Error::from)
     }
 
-    pub async fn get_checkpoint(
-        &self,
-        sprite: &str,
-        checkpoint_id: &str,
-    ) -> Result<Checkpoint> {
+    pub async fn get_checkpoint(&self, sprite: &str, checkpoint_id: &str) -> Result<Checkpoint> {
         let resp = self
             .http
             .get(self.url(&format!("/sprites/{sprite}/checkpoints/{checkpoint_id}")))
@@ -312,11 +315,7 @@ impl SpritesClient {
 
     /// Restore a checkpoint. Returns the raw NDJSON stream body.
     /// Callers can parse lines as [`StreamEvent`].
-    pub async fn restore_checkpoint(
-        &self,
-        sprite: &str,
-        checkpoint_id: &str,
-    ) -> Result<String> {
+    pub async fn restore_checkpoint(&self, sprite: &str, checkpoint_id: &str) -> Result<String> {
         let resp = self
             .http
             .post(self.url(&format!(

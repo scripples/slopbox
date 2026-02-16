@@ -51,12 +51,20 @@ async fn main() {
 
     // Background monitor
     let collector = Arc::new(StubCollector);
-    spawn_monitor(db.clone(), collector, providers.clone(), config.monitor_interval_secs);
+    spawn_monitor(
+        db.clone(),
+        collector,
+        providers.clone(),
+        config.monitor_interval_secs,
+    );
 
     // CORS
     let cors = CorsLayer::new()
         .allow_origin(AllowOrigin::exact(
-            config.frontend_origin.parse().expect("FRONTEND_ORIGIN must be a valid header value"),
+            config
+                .frontend_origin
+                .parse()
+                .expect("FRONTEND_ORIGIN must be a valid header value"),
         ))
         .allow_methods([
             Method::GET,

@@ -28,9 +28,9 @@ pub async fn get_usage(
         .map_err(|_| ApiError::NotFound)?;
 
     let user = User::get_by_id(&state.db, user_id.0).await?;
-    let plan_id = user.plan_id.ok_or(ApiError::BadRequest(
-        "user has no plan".into(),
-    ))?;
+    let plan_id = user
+        .plan_id
+        .ok_or(ApiError::BadRequest("user has no plan".into()))?;
     let plan = Plan::get_by_id(&state.db, plan_id).await?;
 
     let period = VpsUsagePeriod::get_current(&state.db, vps_id).await?;

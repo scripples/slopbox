@@ -4,8 +4,8 @@ use hcloud::apis::servers_api;
 use hcloud::models;
 use tracing::{info, warn};
 
-use crate::{Error, ProviderName, Result, VpsProvider};
 use crate::types::{VpsId, VpsInfo, VpsSpec, VpsState};
+use crate::{Error, ProviderName, Result, VpsProvider};
 
 /// Hetzner Cloud provider using the `hcloud` crate.
 ///
@@ -93,7 +93,9 @@ impl HetznerProvider {
         for (k, v) in &spec.env {
             // Shell-escape single quotes in values
             let escaped = v.replace('\'', "'\\''");
-            env_lines.push_str(&format!("  - echo 'export {k}={escaped}' >> /etc/slopbox/env\n"));
+            env_lines.push_str(&format!(
+                "  - echo 'export {k}={escaped}' >> /etc/slopbox/env\n"
+            ));
         }
 
         let mut file_lines = String::new();
@@ -179,11 +181,9 @@ impl VpsProvider for HetznerProvider {
         let server_type = Self::server_type(spec.cpu_millicores, spec.memory_mb);
         let user_data = Self::cloud_init_user_data(spec);
 
-        let firewalls = self.firewall_id.map(|fw_id| {
-            vec![models::CreateServerRequestFirewalls {
-                firewall: fw_id,
-            }]
-        });
+        let firewalls = self
+            .firewall_id
+            .map(|fw_id| vec![models::CreateServerRequestFirewalls { firewall: fw_id }]);
 
         let ssh_keys = if self.ssh_key_names.is_empty() {
             None
@@ -280,12 +280,10 @@ impl VpsProvider for HetznerProvider {
     async fn get_vps(&self, id: &VpsId) -> Result<VpsInfo> {
         let server_id = Self::parse_id(&id.0)?;
 
-        let resp = servers_api::get_server(
-            &self.config,
-            servers_api::GetServerParams { id: server_id },
-        )
-        .await
-        .map_err(|e| Error::HetznerApi(format!("get server: {e}")))?;
+        let resp =
+            servers_api::get_server(&self.config, servers_api::GetServerParams { id: server_id })
+                .await
+                .map_err(|e| Error::HetznerApi(format!("get server: {e}")))?;
 
         let server = resp
             .server

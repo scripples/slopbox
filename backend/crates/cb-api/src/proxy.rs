@@ -1,7 +1,7 @@
 use std::convert::Infallible;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicI64, Ordering};
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -98,9 +98,7 @@ async fn handle_request(
     let is_hetzner = vps.provider.parse::<cb_infra::ProviderName>().ok()
         == Some(cb_infra::ProviderName::Hetzner);
 
-    if !is_hetzner
-        && let Err(resp) = check_usage(&vps, &db).await
-    {
+    if !is_hetzner && let Err(resp) = check_usage(&vps, &db).await {
         return Ok(resp);
     }
 
@@ -166,7 +164,9 @@ async fn check_usage(vps: &Vps, db: &PgPool) -> Result<(), ProxyResponse> {
     let plan = Plan::get_by_id(db, plan_id).await.map_err(err)?;
 
     // Aggregate usage across all of the user's VPSes for the current month
-    let usage = VpsUsagePeriod::get_user_aggregate(db, user.id).await.map_err(err)?;
+    let usage = VpsUsagePeriod::get_user_aggregate(db, user.id)
+        .await
+        .map_err(err)?;
 
     // Check if within plan limits
     let within_plan = usage.bandwidth_bytes <= plan.max_bandwidth_bytes
@@ -208,7 +208,10 @@ async fn handle_connect(
         Ok(s) => s,
         Err(e) => {
             tracing::warn!(host = %host, error = %e, "CONNECT target unreachable");
-            return Ok(error_response(StatusCode::BAD_GATEWAY, "target unreachable"));
+            return Ok(error_response(
+                StatusCode::BAD_GATEWAY,
+                "target unreachable",
+            ));
         }
     };
 
@@ -309,8 +312,8 @@ async fn handle_plain_http(
     let bytes_out = body_bytes.len() as i64;
 
     // Forward request (strip Proxy-Authorization — reqwest doesn't carry it anyway)
-    let reqwest_method = reqwest::Method::from_bytes(method.as_str().as_bytes())
-        .map_err(|_| "invalid method")?;
+    let reqwest_method =
+        reqwest::Method::from_bytes(method.as_str().as_bytes()).map_err(|_| "invalid method")?;
 
     let resp = match http_client
         .request(reqwest_method, &uri)
@@ -321,7 +324,10 @@ async fn handle_plain_http(
         Ok(r) => r,
         Err(e) => {
             tracing::warn!(uri = %uri, error = %e, "plain HTTP forward failed");
-            return Ok(error_response(StatusCode::BAD_GATEWAY, "target unreachable"));
+            return Ok(error_response(
+                StatusCode::BAD_GATEWAY,
+                "target unreachable",
+            ));
         }
     };
 

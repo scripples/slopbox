@@ -70,7 +70,11 @@ impl Plan {
             .await
     }
 
-    pub async fn add_vps_config(pool: &PgPool, plan_id: Uuid, vps_config_id: Uuid) -> sqlx::Result<()> {
+    pub async fn add_vps_config(
+        pool: &PgPool,
+        plan_id: Uuid,
+        vps_config_id: Uuid,
+    ) -> sqlx::Result<()> {
         sqlx::query(
             "INSERT INTO plan_vps_configs (plan_id, vps_config_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
         )
@@ -81,7 +85,11 @@ impl Plan {
         Ok(())
     }
 
-    pub async fn remove_vps_config(pool: &PgPool, plan_id: Uuid, vps_config_id: Uuid) -> sqlx::Result<()> {
+    pub async fn remove_vps_config(
+        pool: &PgPool,
+        plan_id: Uuid,
+        vps_config_id: Uuid,
+    ) -> sqlx::Result<()> {
         sqlx::query("DELETE FROM plan_vps_configs WHERE plan_id = $1 AND vps_config_id = $2")
             .bind(plan_id)
             .bind(vps_config_id)
@@ -365,12 +373,10 @@ impl Vps {
     }
 
     pub async fn list_for_user(pool: &PgPool, user_id: Uuid) -> sqlx::Result<Vec<Self>> {
-        sqlx::query_as(
-            "SELECT * FROM vpses WHERE user_id = $1 ORDER BY created_at",
-        )
-        .bind(user_id)
-        .fetch_all(pool)
-        .await
+        sqlx::query_as("SELECT * FROM vpses WHERE user_id = $1 ORDER BY created_at")
+            .bind(user_id)
+            .fetch_all(pool)
+            .await
     }
 
     pub async fn count_for_user(pool: &PgPool, user_id: Uuid) -> sqlx::Result<i64> {
@@ -402,14 +408,12 @@ impl Vps {
         provider_vm_id: Option<&str>,
         address: Option<&str>,
     ) -> sqlx::Result<()> {
-        sqlx::query(
-            "UPDATE vpses SET provider_vm_id = $1, address = $2 WHERE id = $3",
-        )
-        .bind(provider_vm_id)
-        .bind(address)
-        .bind(id)
-        .execute(pool)
-        .await?;
+        sqlx::query("UPDATE vpses SET provider_vm_id = $1, address = $2 WHERE id = $3")
+            .bind(provider_vm_id)
+            .bind(address)
+            .bind(id)
+            .execute(pool)
+            .await?;
         Ok(())
     }
 
@@ -500,7 +504,11 @@ impl Agent {
         Ok(count)
     }
 
-    pub async fn assign_vps(pool: &PgPool, agent_id: Uuid, vps_id: Option<Uuid>) -> sqlx::Result<()> {
+    pub async fn assign_vps(
+        pool: &PgPool,
+        agent_id: Uuid,
+        vps_id: Option<Uuid>,
+    ) -> sqlx::Result<()> {
         sqlx::query("UPDATE agents SET vps_id = $1 WHERE id = $2")
             .bind(vps_id)
             .bind(agent_id)
@@ -599,7 +607,10 @@ impl VpsUsagePeriod {
         .map(|opt| {
             opt.unwrap_or(Self {
                 vps_id,
-                period_start: Utc::now().date_naive().with_day(1).unwrap_or(Utc::now().date_naive()),
+                period_start: Utc::now()
+                    .date_naive()
+                    .with_day(1)
+                    .unwrap_or(Utc::now().date_naive()),
                 bandwidth_bytes: 0,
                 cpu_used_ms: 0,
                 memory_used_mb_seconds: 0,
@@ -670,7 +681,10 @@ impl OverageBudget {
         .map(|opt| {
             opt.unwrap_or(Self {
                 user_id,
-                period_start: Utc::now().date_naive().with_day(1).unwrap_or(Utc::now().date_naive()),
+                period_start: Utc::now()
+                    .date_naive()
+                    .with_day(1)
+                    .unwrap_or(Utc::now().date_naive()),
                 budget_cents: 0,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
@@ -740,22 +754,18 @@ impl AgentChannel {
         agent_id: Uuid,
         channel_kind: &str,
     ) -> sqlx::Result<Self> {
-        sqlx::query_as(
-            "SELECT * FROM agent_channels WHERE agent_id = $1 AND channel_kind = $2",
-        )
-        .bind(agent_id)
-        .bind(channel_kind)
-        .fetch_one(pool)
-        .await
+        sqlx::query_as("SELECT * FROM agent_channels WHERE agent_id = $1 AND channel_kind = $2")
+            .bind(agent_id)
+            .bind(channel_kind)
+            .fetch_one(pool)
+            .await
     }
 
     pub async fn list_for_agent(pool: &PgPool, agent_id: Uuid) -> sqlx::Result<Vec<Self>> {
-        sqlx::query_as(
-            "SELECT * FROM agent_channels WHERE agent_id = $1 ORDER BY channel_kind",
-        )
-        .bind(agent_id)
-        .fetch_all(pool)
-        .await
+        sqlx::query_as("SELECT * FROM agent_channels WHERE agent_id = $1 ORDER BY channel_kind")
+            .bind(agent_id)
+            .fetch_all(pool)
+            .await
     }
 
     pub async fn update_credentials(
@@ -763,13 +773,11 @@ impl AgentChannel {
         id: Uuid,
         credentials: &serde_json::Value,
     ) -> sqlx::Result<Self> {
-        sqlx::query_as(
-            "UPDATE agent_channels SET credentials = $1 WHERE id = $2 RETURNING *",
-        )
-        .bind(credentials)
-        .bind(id)
-        .fetch_one(pool)
-        .await
+        sqlx::query_as("UPDATE agent_channels SET credentials = $1 WHERE id = $2 RETURNING *")
+            .bind(credentials)
+            .bind(id)
+            .fetch_one(pool)
+            .await
     }
 
     pub async fn delete_by_agent_and_kind(
@@ -777,13 +785,11 @@ impl AgentChannel {
         agent_id: Uuid,
         channel_kind: &str,
     ) -> sqlx::Result<()> {
-        sqlx::query(
-            "DELETE FROM agent_channels WHERE agent_id = $1 AND channel_kind = $2",
-        )
-        .bind(agent_id)
-        .bind(channel_kind)
-        .execute(pool)
-        .await?;
+        sqlx::query("DELETE FROM agent_channels WHERE agent_id = $1 AND channel_kind = $2")
+            .bind(agent_id)
+            .bind(channel_kind)
+            .execute(pool)
+            .await?;
         Ok(())
     }
 }
