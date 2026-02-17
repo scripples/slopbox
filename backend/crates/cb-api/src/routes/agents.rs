@@ -3,7 +3,7 @@ use axum::http::StatusCode;
 use axum::{Extension, Json};
 use uuid::Uuid;
 
-use cb_db::models::{Agent, Plan, User, Vps, VpsState};
+use cb_db::models::{Agent, Plan, User, Vps, VpsConfig, VpsState};
 
 use crate::auth::UserId;
 use crate::dto::{AgentResponse, CreateAgentRequest};
@@ -30,8 +30,7 @@ pub async fn create_agent(
     }
 
     let agent = Agent::insert(&state.db, user_id.0, &req.name).await?;
-    let resp = AgentResponse::from_agent(agent, None);
-    Ok((StatusCode::CREATED, Json(resp)))
+    Ok((StatusCode::CREATED, Json(AgentResponse::from_agent(agent, None))))
 }
 
 pub async fn list_agents(
@@ -41,11 +40,21 @@ pub async fn list_agents(
     let agents = Agent::list_for_user(&state.db, user_id.0).await?;
     let mut responses = Vec::with_capacity(agents.len());
     for agent in agents {
-        let vps = match agent.vps_id {
-            Some(vps_id) => Vps::get_by_id(&state.db, vps_id).await.ok(),
+        let vps_with_provider = match agent.vps_id {
+            Some(vps_id) => {
+                if let Ok(vps) = Vps::get_by_id(&state.db, vps_id).await {
+                    let provider = VpsConfig::get_by_id(&state.db, vps.vps_config_id)
+                        .await
+                        .map(|c| c.provider)
+                        .unwrap_or_default();
+                    Some((vps, provider))
+                } else {
+                    None
+                }
+            }
             None => None,
         };
-        responses.push(AgentResponse::from_agent(agent, vps));
+        responses.push(AgentResponse::from_agent(agent, vps_with_provider));
     }
     Ok(Json(responses))
 }
@@ -63,12 +72,22 @@ pub async fn get_agent(
         return Err(ApiError::NotFound);
     }
 
-    let vps = match agent.vps_id {
-        Some(vps_id) => Vps::get_by_id(&state.db, vps_id).await.ok(),
+    let vps_with_provider = match agent.vps_id {
+        Some(vps_id) => {
+            if let Ok(vps) = Vps::get_by_id(&state.db, vps_id).await {
+                let provider = VpsConfig::get_by_id(&state.db, vps.vps_config_id)
+                    .await
+                    .map(|c| c.provider)
+                    .unwrap_or_default();
+                Some((vps, provider))
+            } else {
+                None
+            }
+        }
         None => None,
     };
 
-    Ok(Json(AgentResponse::from_agent(agent, vps)))
+    Ok(Json(AgentResponse::from_agent(agent, vps_with_provider)))
 }
 
 pub async fn delete_agent(
@@ -90,7 +109,8 @@ pub async fn delete_agent(
         && vps.state != VpsState::Destroyed
     {
         if let Some(ref vm_id) = vps.provider_vm_id
-            && let Ok(name) = vps.provider.parse::<cb_infra::ProviderName>()
+            && let Ok(config) = VpsConfig::get_by_id(&state.db, vps.vps_config_id).await
+            && let Ok(name) = config.provider.parse::<cb_infra::ProviderName>()
             && let Some(provider) = state.providers.get(name)
         {
             let _ = provider

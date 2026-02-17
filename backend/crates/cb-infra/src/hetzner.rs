@@ -35,7 +35,7 @@ impl HetznerProvider {
         let mut config = Configuration::new();
         config.bearer_access_token = Some(token);
 
-        let location = std::env::var("HETZNER_LOCATION").unwrap_or_else(|_| "fsn1".into());
+        let location = std::env::var("HETZNER_LOCATION").unwrap_or_else(|_| "ash".into());
 
         let network_id = std::env::var("HETZNER_NETWORK_ID")
             .ok()
@@ -197,8 +197,8 @@ impl VpsProvider for HetznerProvider {
                 create_server_request: models::CreateServerRequest {
                     name: spec.name.clone(),
                     server_type: server_type.into(),
-                    image: spec.image.clone(),
-                    location: Some(self.location.clone()),
+                    image: spec.image.clone().unwrap_or_else(|| "ubuntu-24.04".into()),
+                    location: Some(spec.location.clone().unwrap_or_else(|| self.location.clone())),
                     user_data: Some(user_data),
                     networks: self.network_id.map(|id| vec![id]),
                     firewalls,

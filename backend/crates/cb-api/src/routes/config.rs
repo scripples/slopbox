@@ -4,7 +4,7 @@ use axum::{Extension, Json};
 use serde::Serialize;
 use uuid::Uuid;
 
-use cb_db::models::{Agent, Vps, VpsState};
+use cb_db::models::{Agent, Vps, VpsConfig, VpsState};
 
 use crate::auth::UserId;
 use crate::dto::{UpdateConfigRequest, UpdateWorkspaceFileRequest};
@@ -81,6 +81,7 @@ pub async fn update_config(
     Json(req): Json<UpdateConfigRequest>,
 ) -> Result<StatusCode, ApiError> {
     let (agent, vps) = get_running_agent_vps(&state, user_id.0, agent_id).await?;
+    let vps_config = VpsConfig::get_by_id(&state.db, vps.vps_config_id).await?;
 
     let config = openclaw_config::build_openclaw_config(&ConfigParams {
         agent_id,
@@ -89,7 +90,7 @@ pub async fn update_config(
     });
     let config_json = openclaw_config::render_openclaw_config(&config);
 
-    if vps.provider == "sprites" {
+    if vps_config.provider == "sprites" {
         let client = sprites_client(&state)?;
         let vm_id = vps
             .provider_vm_id
@@ -172,8 +173,9 @@ pub async fn update_workspace_file(
     }
 
     let (agent, vps) = get_running_agent_vps(&state, user_id.0, agent_id).await?;
+    let vps_config = VpsConfig::get_by_id(&state.db, vps.vps_config_id).await?;
 
-    if vps.provider == "sprites" {
+    if vps_config.provider == "sprites" {
         // Sprites: write directly via exec
         let client = sprites_client(&state)?;
         let vm_id = vps
@@ -245,8 +247,9 @@ pub async fn restart_agent(
     Path(agent_id): Path<Uuid>,
 ) -> Result<StatusCode, ApiError> {
     let (agent, vps) = get_running_agent_vps(&state, user_id.0, agent_id).await?;
+    let vps_config = VpsConfig::get_by_id(&state.db, vps.vps_config_id).await?;
 
-    if vps.provider == "sprites" {
+    if vps_config.provider == "sprites" {
         let client = sprites_client(&state)?;
         let vm_id = vps
             .provider_vm_id
@@ -260,7 +263,7 @@ pub async fn restart_agent(
             .map_err(|e| ApiError::Internal(format!("failed to start service: {e}")))?;
 
         Ok(StatusCode::NO_CONTENT)
-    } else if vps.provider == "hetzner" {
+    } else if vps_config.provider == "hetzner" {
         // Hetzner: restart via provider API (reboot the server)
         let provider_name: cb_infra::ProviderName = "hetzner"
             .parse()
@@ -308,8 +311,9 @@ pub async fn agent_health(
     Path(agent_id): Path<Uuid>,
 ) -> Result<Json<AgentHealthResponse>, ApiError> {
     let (agent, vps) = get_running_agent_vps(&state, user_id.0, agent_id).await?;
+    let vps_config = VpsConfig::get_by_id(&state.db, vps.vps_config_id).await?;
 
-    if vps.provider == "sprites" {
+    if vps_config.provider == "sprites" {
         let client = sprites_client(&state)?;
         let vm_id = vps
             .provider_vm_id

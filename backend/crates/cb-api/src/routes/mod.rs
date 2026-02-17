@@ -24,6 +24,17 @@ pub fn api_router(state: AppState) -> Router {
         .route("/admin/vpses", get(admin::list_vpses))
         .route("/admin/vpses/{id}/stop", post(admin::stop_vps))
         .route("/admin/vpses/{id}/destroy", post(admin::destroy_vps))
+        .route("/admin/agents", get(admin::list_all_agents))
+        .route("/admin/agents/{id}", delete(admin::admin_delete_agent))
+        .route(
+            "/admin/vps-configs",
+            get(admin::list_vps_configs).post(admin::create_vps_config),
+        )
+        .route(
+            "/admin/vps-configs/{id}",
+            put(admin::update_vps_config).delete(admin::delete_vps_config),
+        )
+        .route("/admin/cleanup", post(admin::cleanup_stuck))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             admin_middleware,
@@ -81,10 +92,9 @@ pub fn api_router(state: AppState) -> Router {
     let authed_routes = Router::new()
         .route("/users/me", get(users::get_me))
         .route("/plans", get(plans::list_plans))
-        .merge(active_routes)
-        .merge(admin_routes);
+        .merge(active_routes);
 
-    // All authed routes get auth middleware
+    // All authed routes get auth middleware (JWT)
     let authed = authed_routes.layer(middleware::from_fn_with_state(
         state.clone(),
         auth_middleware,
@@ -95,6 +105,7 @@ pub fn api_router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(|| async { StatusCode::OK }))
         .merge(authed)
+        .merge(admin_routes) // admin routes handle their own auth (static token or JWT+admin role)
         .merge(gateway)
         .with_state(state)
 }

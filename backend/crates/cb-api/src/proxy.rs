@@ -17,7 +17,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use uuid::Uuid;
 
-use cb_db::models::{Agent, OverageBudget, Plan, User, Vps, VpsUsagePeriod};
+use cb_db::models::{Agent, OverageBudget, Plan, User, Vps, VpsConfig, VpsUsagePeriod};
 
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
 type ProxyResponse = Response<Full<Bytes>>;
@@ -95,7 +95,11 @@ async fn handle_request(
         .await
         .map_err(|e| -> BoxError { e.into() })?;
 
-    let is_hetzner = vps.provider.parse::<cb_infra::ProviderName>().ok()
+    let vps_config = VpsConfig::get_by_id(&db, vps.vps_config_id)
+        .await
+        .map_err(|e| -> BoxError { e.into() })?;
+
+    let is_hetzner = vps_config.provider.parse::<cb_infra::ProviderName>().ok()
         == Some(cb_infra::ProviderName::Hetzner);
 
     if !is_hetzner && let Err(resp) = check_usage(&vps, &db).await {

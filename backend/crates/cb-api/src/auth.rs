@@ -25,9 +25,7 @@ pub struct JwtClaims {
 /// Validate a JWT token and extract the user ID from the `sub` claim.
 pub fn validate_jwt(token: &str, secret: &str) -> Result<UserId, ApiError> {
     let key = DecodingKey::from_secret(secret.as_bytes());
-    let mut validation = Validation::new(Algorithm::HS256);
-    validation.required_spec_claims.clear();
-    validation.validate_exp = false;
+    let validation = Validation::new(Algorithm::HS256);
 
     let data = jsonwebtoken::decode::<JwtClaims>(token, &key, &validation)
         .map_err(|_| ApiError::Unauthorized)?;
@@ -91,16 +89,33 @@ pub async fn status_middleware(
     next.run(req).await
 }
 
-/// Middleware that checks the user has admin role.
-/// Must run after auth_middleware (requires UserId in extensions).
+/// Middleware that checks admin access.
+///
+/// Accepts either:
+/// 1. `Authorization: Bearer <ADMIN_API_TOKEN>` — static token from env (for CLI/testing)
+/// 2. `Authorization: Bearer <JWT>` — JWT with UserRole::Admin
+///
+/// Admin routes are NOT nested under auth_middleware, so this middleware
+/// handles both static token and JWT validation itself.
 pub async fn admin_middleware(
     axum::extract::State(state): axum::extract::State<AppState>,
     req: Request,
     next: Next,
 ) -> Response {
-    let user_id = match req.extensions().get::<UserId>() {
-        Some(id) => id.0,
+    let token = match extract_bearer(&req) {
+        Some(t) => t,
         None => return ApiError::Unauthorized.into_response(),
+    };
+
+    // Check for static admin token first
+    if token == state.config.admin_api_token {
+        return next.run(req).await;
+    }
+
+    // Fall back to JWT-based admin check
+    let user_id = match validate_jwt(token, &state.config.jwt_secret) {
+        Ok(uid) => uid.0,
+        Err(_) => return ApiError::Unauthorized.into_response(),
     };
 
     let user = match User::get_by_id(&state.db, user_id).await {

@@ -33,12 +33,12 @@ pub struct AgentResponse {
 }
 
 impl AgentResponse {
-    pub fn from_agent(agent: Agent, vps: Option<Vps>) -> Self {
+    pub fn from_agent(agent: Agent, vps: Option<(Vps, String)>) -> Self {
         Self {
             id: agent.id,
             user_id: agent.user_id,
             name: agent.name,
-            vps: vps.map(VpsResponse::from),
+            vps: vps.map(|(v, provider)| VpsResponse::new(v, provider)),
             created_at: agent.created_at,
             updated_at: agent.updated_at,
         }
@@ -58,13 +58,13 @@ pub struct VpsResponse {
     pub updated_at: DateTime<Utc>,
 }
 
-impl From<Vps> for VpsResponse {
-    fn from(v: Vps) -> Self {
+impl VpsResponse {
+    pub fn new(v: Vps, provider: String) -> Self {
         Self {
             id: v.id,
             vps_config_id: v.vps_config_id,
             name: v.name,
-            provider: v.provider,
+            provider,
             state: v.state,
             address: v.address,
             storage_used_bytes: v.storage_used_bytes,

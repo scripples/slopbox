@@ -72,14 +72,7 @@ pub async fn provision_vps(
 
     // Insert VPS in Provisioning state
     let vps_name = format!("agent-{}", agent_id);
-    let vps = Vps::insert(
-        &state.db,
-        user_id.0,
-        req.vps_config_id,
-        &vps_name,
-        &vps_config.provider,
-    )
-    .await?;
+    let vps = Vps::insert(&state.db, user_id.0, req.vps_config_id, &vps_name).await?;
 
     // Assign VPS to agent
     Agent::assign_vps(&state.db, agent_id, Some(vps.id)).await?;
@@ -116,6 +109,7 @@ pub async fn provision_vps(
     let vps_spec = VpsSpec {
         name: vps_name.clone(),
         image: vps_config.image.clone(),
+        location: vps_config.location.clone(),
         cpu_millicores: vps_config.cpu_millicores,
         memory_mb: vps_config.memory_mb,
         env,
@@ -141,7 +135,10 @@ pub async fn provision_vps(
     Vps::set_state(&state.db, vps.id, VpsState::Running).await?;
 
     let updated_vps = Vps::get_by_id(&state.db, vps.id).await?;
-    Ok((StatusCode::CREATED, Json(VpsResponse::from(updated_vps))))
+    Ok((
+        StatusCode::CREATED,
+        Json(VpsResponse::new(updated_vps, vps_config.provider.clone())),
+    ))
 }
 
 pub async fn start_vps(
@@ -165,12 +162,12 @@ pub async fn start_vps(
         .as_ref()
         .ok_or(ApiError::Internal("VPS has no provider VM ID".into()))?;
 
-    let provider = provider_for_vps(&state, &vps)?;
+    let (provider, config) = provider_for_vps(&state, &vps).await?;
     provider.start_vps(&VpsId(vm_id.clone())).await?;
     Vps::set_state(&state.db, vps.id, VpsState::Running).await?;
 
     let updated = Vps::get_by_id(&state.db, vps.id).await?;
-    Ok(Json(VpsResponse::from(updated)))
+    Ok(Json(VpsResponse::new(updated, config.provider)))
 }
 
 pub async fn stop_vps(
@@ -194,12 +191,12 @@ pub async fn stop_vps(
         .as_ref()
         .ok_or(ApiError::Internal("VPS has no provider VM ID".into()))?;
 
-    let provider = provider_for_vps(&state, &vps)?;
+    let (provider, config) = provider_for_vps(&state, &vps).await?;
     provider.stop_vps(&VpsId(vm_id.clone())).await?;
     Vps::set_state(&state.db, vps.id, VpsState::Stopped).await?;
 
     let updated = Vps::get_by_id(&state.db, vps.id).await?;
-    Ok(Json(VpsResponse::from(updated)))
+    Ok(Json(VpsResponse::new(updated, config.provider)))
 }
 
 pub async fn destroy_vps(
@@ -215,7 +212,7 @@ pub async fn destroy_vps(
 
     // Best-effort destroy VM
     if let Some(ref vm_id) = vps.provider_vm_id
-        && let Ok(provider) = provider_for_vps(&state, &vps)
+        && let Ok((provider, _config)) = provider_for_vps(&state, &vps).await
     {
         let _ = provider.destroy_vps(&VpsId(vm_id.clone())).await;
     }
@@ -226,18 +223,20 @@ pub async fn destroy_vps(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Look up the configured provider for a VPS record.
-fn provider_for_vps<'a>(
+/// Look up the configured provider for a VPS record by fetching its VpsConfig.
+pub async fn provider_for_vps<'a>(
     state: &'a AppState,
     vps: &Vps,
-) -> Result<&'a Arc<dyn cb_infra::VpsProvider>, ApiError> {
-    let name: ProviderName = vps.provider.parse().map_err(|_| {
-        ApiError::Internal(format!("unknown provider in VPS record: {}", vps.provider))
+) -> Result<(&'a Arc<dyn cb_infra::VpsProvider>, VpsConfig), ApiError> {
+    let config = VpsConfig::get_by_id(&state.db, vps.vps_config_id).await?;
+    let name: ProviderName = config.provider.parse().map_err(|_| {
+        ApiError::Internal(format!("unknown provider in VPS config: {}", config.provider))
     })?;
-    state
+    let provider = state
         .providers
         .get(name)
-        .ok_or_else(|| ApiError::Internal(format!("provider not configured: {name}")))
+        .ok_or_else(|| ApiError::Internal(format!("provider not configured: {name}")))?;
+    Ok((provider, config))
 }
 
 /// Helper: fetch agent + attached VPS, enforcing ownership.

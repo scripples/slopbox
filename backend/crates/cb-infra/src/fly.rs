@@ -77,7 +77,7 @@ impl VpsProvider for FlyProvider {
                 name: spec.name.clone(),
                 region: self.region.clone(),
                 config: fly_api::MachineConfig {
-                    image: spec.image.clone(),
+                    image: spec.image.clone().unwrap_or_else(|| "ubuntu:24.04".into()),
                     env: Some(spec.env.clone()),
                     guest: Self::guest_config(spec.cpu_millicores, spec.memory_mb),
                     mounts: None,

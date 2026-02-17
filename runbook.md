@@ -72,14 +72,14 @@ fly logs -a slopbox-api   # should see "listening on 0.0.0.0:8080"
 
 # 4. (Optional) Create a private network
 #    Hetzner Console → Networks → Create Network
-#    Subnet: e.g. 10.0.0.0/16 in your chosen location (fsn1)
+#    Subnet: e.g. 10.0.0.0/16 in your chosen location (ash)
 ```
 
 ### Build the Hetzner Snapshot (cuts agent boot time from ~3 min to ~30 sec)
 
 ```bash
 # 1. Create a temporary server
-hcloud server create --name snapshot-builder --type cpx11 --image ubuntu-24.04 --location fsn1
+hcloud server create --name snapshot-builder --type cpx11 --image ubuntu-24.04 --location ash
 
 # 2. SSH in and install dependencies
 hcloud server ssh snapshot-builder
@@ -112,20 +112,20 @@ Edit `backend/crates/cb-db/migrations/014_seed_sprites_demo.sql` — change the 
 
 ```sql
 INSERT INTO vps_configs (name, provider, image, cpu_millicores, memory_mb, disk_gb)
-VALUES ('hetzner-standard', 'hetzner', '<SNAPSHOT_ID>', 2000, 2048, 20)
+VALUES ('hetzner-small', 'hetzner', '<SNAPSHOT_ID>', 2000, 2048, 20)
 ON CONFLICT DO NOTHING;
 ```
 
 Or update it after migrations run:
 ```sql
-UPDATE vps_configs SET image = '<SNAPSHOT_ID>' WHERE name = 'hetzner-standard';
+UPDATE vps_configs SET image = '<SNAPSHOT_ID>' WHERE name = 'hetzner-small';
 ```
 
 Then set the Hetzner secrets on Fly:
 ```bash
 fly secrets set -a slopbox-api \
   HETZNER_API_TOKEN="<your-token>" \
-  HETZNER_LOCATION="fsn1"
+  HETZNER_LOCATION="ash"
 
 # Optional, if you created these:
 fly secrets set -a slopbox-api \
@@ -189,7 +189,7 @@ fly secrets set -a slopbox-api CONTROL_PLANE_API_KEY="<same-key-as-vercel>"
 | `DATABASE_URL` | Auto-set by `fly postgres attach` | Yes |
 | `JWT_SECRET` | `openssl rand -hex 32` | Yes |
 | `HETZNER_API_TOKEN` | Hetzner Console → API Tokens | Yes |
-| `HETZNER_LOCATION` | Datacenter code (default: `fsn1`) | No |
+| `HETZNER_LOCATION` | Datacenter code (default: `ash`) | No |
 | `HETZNER_FIREWALL_ID` | Hetzner Console → Firewalls | No |
 | `HETZNER_NETWORK_ID` | Hetzner Console → Networks | No |
 | `HETZNER_SSH_KEY_NAMES` | Hetzner Console → SSH Keys | No |

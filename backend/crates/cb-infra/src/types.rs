@@ -6,11 +6,11 @@ use std::collections::HashMap;
 pub struct VpsId(pub String);
 
 /// Specification for creating a VPS.
-/// Region is not included — the provider uses its own configured region.
 #[derive(Debug, Clone)]
 pub struct VpsSpec {
     pub name: String,
-    pub image: String,
+    pub image: Option<String>,
+    pub location: Option<String>,
     pub cpu_millicores: i32,
     pub memory_mb: i32,
     pub env: HashMap<String, String>,

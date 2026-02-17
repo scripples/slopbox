@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use cb_db::models::{OverageBudget, Plan, User, Vps, VpsState, VpsUsagePeriod};
+use cb_db::models::{OverageBudget, Plan, User, Vps, VpsConfig, VpsState, VpsUsagePeriod};
 use cb_infra::ProviderRegistry;
 use sqlx::PgPool;
 
@@ -60,7 +60,14 @@ pub fn spawn_monitor(
 async fn poll_metrics(pool: &PgPool, collector: &dyn MetricsCollector) -> Result<(), BoxError> {
     let running = Vps::list_by_state(pool, VpsState::Running).await?;
     for vps in &running {
-        let metering = cb_infra::metered_resources_for(&vps.provider);
+        let config = match VpsConfig::get_by_id(pool, vps.vps_config_id).await {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::error!(vps_id = %vps.id, error = %e, "failed to load vps config");
+                continue;
+            }
+        };
+        let metering = cb_infra::metered_resources_for(&config.provider);
 
         // Skip CPU/memory collection for bandwidth-only providers
         if !metering.cpu && !metering.memory {
@@ -123,13 +130,26 @@ async fn poll_metrics(pool: &PgPool, collector: &dyn MetricsCollector) -> Result
 async fn enforce_limits(pool: &PgPool, providers: &ProviderRegistry) -> Result<(), BoxError> {
     let running = Vps::list_by_state(pool, VpsState::Running).await?;
 
+    // Preload VpsConfigs for all running VPSes
+    let mut config_map = std::collections::HashMap::new();
+    for vps in &running {
+        if let std::collections::hash_map::Entry::Vacant(e) = config_map.entry(vps.vps_config_id)
+            && let Ok(config) = VpsConfig::get_by_id(pool, vps.vps_config_id).await
+        {
+            e.insert(config);
+        }
+    }
+
+    let provider_for = |vps: &Vps| -> Option<cb_infra::ProviderName> {
+        config_map
+            .get(&vps.vps_config_id)
+            .and_then(|c| c.provider.parse::<cb_infra::ProviderName>().ok())
+    };
+
     // Collect distinct users who have running Hetzner VPSes
     let hetzner_users: HashSet<uuid::Uuid> = running
         .iter()
-        .filter(|v| {
-            v.provider.parse::<cb_infra::ProviderName>().ok()
-                == Some(cb_infra::ProviderName::Hetzner)
-        })
+        .filter(|v| provider_for(v) == Some(cb_infra::ProviderName::Hetzner))
         .map(|v| v.user_id)
         .collect();
 
@@ -198,17 +218,22 @@ async fn enforce_limits(pool: &PgPool, providers: &ProviderRegistry) -> Result<(
         for vps in running.iter().filter(|v| {
             v.user_id == *user_id
                 && v.state == VpsState::Running
-                && v.provider.parse::<cb_infra::ProviderName>().ok()
-                    == Some(cb_infra::ProviderName::Hetzner)
+                && provider_for(v) == Some(cb_infra::ProviderName::Hetzner)
         }) {
             let vm_id = match &vps.provider_vm_id {
                 Some(id) => cb_infra::types::VpsId(id.clone()),
                 None => continue,
             };
 
+            let provider_str = config_map
+                .get(&vps.vps_config_id)
+                .map(|c| c.provider.as_str())
+                .unwrap_or("unknown");
+
             tracing::warn!(
                 user_id = %user_id,
                 vps_id = %vps.id,
+                provider = provider_str,
                 overage_cost_cents = overage_cost,
                 budget_cents = budget.budget_cents,
                 "enforcement: stopping Hetzner VPS (overage budget exhausted)"
@@ -227,13 +252,16 @@ async fn enforce_limits(pool: &PgPool, providers: &ProviderRegistry) -> Result<(
 
     // Stub for future non-Hetzner enforcement
     for vps in running.iter().filter(|v| {
-        v.provider.parse::<cb_infra::ProviderName>().ok() != Some(cb_infra::ProviderName::Hetzner)
-            && v.provider.parse::<cb_infra::ProviderName>().ok()
-                != Some(cb_infra::ProviderName::Fly)
+        let pname = provider_for(v);
+        pname != Some(cb_infra::ProviderName::Hetzner) && pname != Some(cb_infra::ProviderName::Fly)
     }) {
+        let provider_str = config_map
+            .get(&vps.vps_config_id)
+            .map(|c| c.provider.as_str())
+            .unwrap_or("unknown");
         tracing::debug!(
             vps_id = %vps.id,
-            provider = %vps.provider,
+            provider = provider_str,
             "enforcement: would apply to this provider in the future"
         );
     }

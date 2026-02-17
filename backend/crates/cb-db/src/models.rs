@@ -127,7 +127,8 @@ pub struct VpsConfig {
     pub id: Uuid,
     pub name: String,
     pub provider: String,
-    pub image: String,
+    pub image: Option<String>,
+    pub location: Option<String>,
     pub cpu_millicores: i32,
     pub memory_mb: i32,
     pub disk_gb: i32,
@@ -136,21 +137,24 @@ pub struct VpsConfig {
 }
 
 impl VpsConfig {
+    #[allow(clippy::too_many_arguments)]
     pub async fn insert(
         pool: &PgPool,
         name: &str,
         provider: &str,
-        image: &str,
+        image: Option<&str>,
+        location: Option<&str>,
         cpu_millicores: i32,
         memory_mb: i32,
         disk_gb: i32,
     ) -> sqlx::Result<Self> {
         sqlx::query_as(
-            "INSERT INTO vps_configs (name, provider, image, cpu_millicores, memory_mb, disk_gb) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *",
+            "INSERT INTO vps_configs (name, provider, image, location, cpu_millicores, memory_mb, disk_gb) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
         )
         .bind(name)
         .bind(provider)
         .bind(image)
+        .bind(location)
         .bind(cpu_millicores)
         .bind(memory_mb)
         .bind(disk_gb)
@@ -175,6 +179,55 @@ impl VpsConfig {
         .bind(plan_id)
         .fetch_all(pool)
         .await
+    }
+
+    pub async fn list_all(pool: &PgPool) -> sqlx::Result<Vec<Self>> {
+        sqlx::query_as("SELECT * FROM vps_configs ORDER BY name")
+            .fetch_all(pool)
+            .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn update(
+        pool: &PgPool,
+        id: Uuid,
+        name: Option<&str>,
+        image: Option<Option<&str>>,
+        location: Option<Option<&str>>,
+        cpu_millicores: Option<i32>,
+        memory_mb: Option<i32>,
+        disk_gb: Option<i32>,
+    ) -> sqlx::Result<Self> {
+        sqlx::query_as(
+            r#"UPDATE vps_configs SET
+                   name = COALESCE($1, name),
+                   image = CASE WHEN $2 THEN $3 ELSE image END,
+                   location = CASE WHEN $4 THEN $5 ELSE location END,
+                   cpu_millicores = COALESCE($6, cpu_millicores),
+                   memory_mb = COALESCE($7, memory_mb),
+                   disk_gb = COALESCE($8, disk_gb)
+               WHERE id = $9
+               RETURNING *"#,
+        )
+        .bind(name)
+        .bind(image.is_some())
+        .bind(image.flatten())
+        .bind(location.is_some())
+        .bind(location.flatten())
+        .bind(cpu_millicores)
+        .bind(memory_mb)
+        .bind(disk_gb)
+        .bind(id)
+        .fetch_one(pool)
+        .await
+    }
+
+    pub async fn delete(pool: &PgPool, id: Uuid) -> sqlx::Result<()> {
+        sqlx::query("DELETE FROM vps_configs WHERE id = $1")
+            .bind(id)
+            .execute(pool)
+            .await?;
+        Ok(())
     }
 }
 
@@ -333,7 +386,6 @@ pub struct Vps {
     pub user_id: Uuid,
     pub vps_config_id: Uuid,
     pub name: String,
-    pub provider: String,
     pub provider_vm_id: Option<String>,
     pub address: Option<String>,
     pub state: VpsState,
@@ -350,17 +402,15 @@ impl Vps {
         user_id: Uuid,
         vps_config_id: Uuid,
         name: &str,
-        provider: &str,
     ) -> sqlx::Result<Self> {
         sqlx::query_as(
-            r#"INSERT INTO vpses (user_id, vps_config_id, name, provider)
-               VALUES ($1, $2, $3, $4)
+            r#"INSERT INTO vpses (user_id, vps_config_id, name)
+               VALUES ($1, $2, $3)
                RETURNING *"#,
         )
         .bind(user_id)
         .bind(vps_config_id)
         .bind(name)
-        .bind(provider)
         .fetch_one(pool)
         .await
     }
@@ -523,6 +573,12 @@ impl Agent {
             .execute(pool)
             .await?;
         Ok(())
+    }
+
+    pub async fn list_all(pool: &PgPool) -> sqlx::Result<Vec<Self>> {
+        sqlx::query_as("SELECT * FROM agents ORDER BY created_at")
+            .fetch_all(pool)
+            .await
     }
 
     pub async fn get_by_id_and_token(pool: &PgPool, id: Uuid, token: &str) -> sqlx::Result<Self> {

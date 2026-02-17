@@ -2,7 +2,7 @@ use axum::extract::{Path, State};
 use axum::{Extension, Json};
 use uuid::Uuid;
 
-use cb_db::models::{Agent, OverageBudget, Plan, User, Vps, VpsUsagePeriod};
+use cb_db::models::{Agent, OverageBudget, Plan, User, Vps, VpsConfig, VpsUsagePeriod};
 
 use crate::auth::UserId;
 use crate::dto::{OverageBudgetResponse, SetOverageBudgetRequest, UsageMetric, UsageResponse};
@@ -33,8 +33,10 @@ pub async fn get_usage(
         .ok_or(ApiError::BadRequest("user has no plan".into()))?;
     let plan = Plan::get_by_id(&state.db, plan_id).await?;
 
+    let vps_config = VpsConfig::get_by_id(&state.db, vps.vps_config_id).await?;
+
     let period = VpsUsagePeriod::get_current(&state.db, vps_id).await?;
-    let metering = cb_infra::metered_resources_for(&vps.provider);
+    let metering = cb_infra::metered_resources_for(&vps_config.provider);
 
     let bandwidth = UsageMetric {
         used: period.bandwidth_bytes,

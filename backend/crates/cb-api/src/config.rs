@@ -10,6 +10,7 @@ pub struct AppConfig {
     pub monitor_interval_secs: u64,
     pub proxy_listen_addr: SocketAddr,
     pub proxy_external_addr: String,
+    pub admin_api_token: String,
 }
 
 impl AppConfig {
@@ -33,6 +34,7 @@ impl AppConfig {
                 .expect("PROXY_LISTEN_ADDR must be a valid socket address"),
             proxy_external_addr: env::var("PROXY_EXTERNAL_ADDR")
                 .unwrap_or_else(|_| "cb-api:3128".into()),
+            admin_api_token: env::var("ADMIN_API_TOKEN").expect("ADMIN_API_TOKEN must be set"),
         }
     }
 }
