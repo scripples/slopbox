@@ -6,3 +6,6 @@ ALTER TABLE vps_configs ALTER COLUMN image DROP NOT NULL;
 
 -- Remove redundant provider column from vpses (derivable via vps_config_id → vps_configs.provider)
 ALTER TABLE vpses DROP COLUMN provider;
+
+-- Set location for seeded hetzner config
+UPDATE vps_configs SET location = 'ash' WHERE name = 'hetzner-small';

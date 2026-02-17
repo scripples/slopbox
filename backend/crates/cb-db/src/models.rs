@@ -326,22 +326,30 @@ impl User {
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct OAuthAccount {
     pub id: Uuid,
+    #[sqlx(rename = "userId")]
     pub user_id: Uuid,
     pub r#type: String,
     pub provider: String,
+    #[sqlx(rename = "providerAccountId")]
     pub provider_account_id: String,
+    #[sqlx(rename = "refreshToken")]
     pub refresh_token: Option<String>,
+    #[sqlx(rename = "accessToken")]
     pub access_token: Option<String>,
+    #[sqlx(rename = "expiresAt")]
     pub expires_at: Option<i32>,
+    #[sqlx(rename = "tokenType")]
     pub token_type: Option<String>,
     pub scope: Option<String>,
+    #[sqlx(rename = "idToken")]
     pub id_token: Option<String>,
+    #[sqlx(rename = "sessionState")]
     pub session_state: Option<String>,
 }
 
 impl OAuthAccount {
     pub async fn get_by_user_id(pool: &PgPool, user_id: Uuid) -> sqlx::Result<Vec<Self>> {
-        sqlx::query_as("SELECT * FROM accounts WHERE user_id = $1 ORDER BY provider")
+        sqlx::query_as(r#"SELECT * FROM accounts WHERE "userId" = $1 ORDER BY provider"#)
             .bind(user_id)
             .fetch_all(pool)
             .await
@@ -353,7 +361,9 @@ impl OAuthAccount {
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct Session {
     pub id: Uuid,
+    #[sqlx(rename = "sessionToken")]
     pub session_token: String,
+    #[sqlx(rename = "userId")]
     pub user_id: Uuid,
     pub expires: DateTime<Utc>,
 }
@@ -361,7 +371,7 @@ pub struct Session {
 impl Session {
     /// Look up a session by its token, returning `None` if expired or not found.
     pub async fn get_valid_by_token(pool: &PgPool, token: &str) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as("SELECT * FROM sessions WHERE session_token = $1 AND expires > now()")
+        sqlx::query_as(r#"SELECT * FROM sessions WHERE "sessionToken" = $1 AND expires > now()"#)
             .bind(token)
             .fetch_optional(pool)
             .await

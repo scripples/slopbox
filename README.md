@@ -109,6 +109,57 @@ SaaS platform for renting sandboxed AI agents as containerized apps. Each agent 
 | `MONITOR_INTERVAL_SECS` | `60` | Metrics polling interval |
 | `RUST_LOG` | `info` | Tracing log filter |
 
+## CI/CD
+
+### Backend (`.github/workflows/ci.yml`)
+
+Triggers on push to `master` or PR when `backend/**` files change.
+
+**Jobs:**
+1. **check** — `cargo fmt --check` + `cargo clippy --workspace -- -D warnings` (Rust 1.93.1)
+2. **deploy** — `flyctl deploy --remote-only` (only on push/dispatch, after check passes)
+
+**Required GitHub Secrets:**
+
+| Secret | Description |
+|--------|-------------|
+| `FLY_API_TOKEN` | Fly.io deploy token. Generate via `fly tokens create deploy -a slopbox-api` |
+
+### Frontend
+
+Not yet in CI. Deployed to Vercel (auto-deploys on push once connected).
+
+## Infrastructure
+
+| Service | Provider | Purpose |
+|---------|----------|---------|
+| Control plane | Fly.io (`slopbox-api`) | API server + forward proxy |
+| Database | Neon Postgres | Shared by backend + frontend Auth.js |
+| Agent VMs | Hetzner Cloud / Sprites | One microVM per agent |
+
+### Fly.io Secrets (backend)
+
+| Secret | Description |
+|--------|-------------|
+| `DATABASE_URL` | Neon Postgres connection string |
+| `JWT_SECRET` | HMAC secret for JWT signing (shared with frontend) |
+| `ADMIN_API_TOKEN` | Static token for admin API routes |
+| `FRONTEND_ORIGIN` | Allowed CORS origin (Vercel URL) |
+| `HETZNER_API_TOKEN` | Hetzner Cloud API token |
+| `HETZNER_LOCATION` | Default Hetzner datacenter |
+
+### Vercel Env Vars (frontend)
+
+| Variable | Description |
+|----------|-------------|
+| `DATABASE_URL` | Neon Postgres connection string (same as backend) |
+| `AUTH_SECRET` | Auth.js session encryption secret |
+| `AUTH_TRUST_HOST` | `true` (required for Vercel) |
+| `JWT_SECRET` | Must match backend `JWT_SECRET` |
+| `NEXT_PUBLIC_API_URL` | `https://slopbox-api.fly.dev` |
+| `AUTH_GITHUB_ID` | GitHub OAuth App client ID |
+| `AUTH_GITHUB_SECRET` | GitHub OAuth App client secret |
+
 ## Build
 
 ```bash
@@ -120,6 +171,5 @@ No tests yet.
 
 ## Notes
 
-- `.env.example` exists but may be stale — see `EVALUATION.md` for details.
 - `sprites-api` is complete but not integrated into the workspace dependency graph.
 - The background monitor currently uses a `StubCollector` that produces no real metrics.
