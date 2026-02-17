@@ -198,7 +198,11 @@ impl VpsProvider for HetznerProvider {
                     name: spec.name.clone(),
                     server_type: server_type.into(),
                     image: spec.image.clone().unwrap_or_else(|| "ubuntu-24.04".into()),
-                    location: Some(spec.location.clone().unwrap_or_else(|| self.location.clone())),
+                    location: Some(
+                        spec.location
+                            .clone()
+                            .unwrap_or_else(|| self.location.clone()),
+                    ),
                     user_data: Some(user_data),
                     networks: self.network_id.map(|id| vec![id]),
                     firewalls,

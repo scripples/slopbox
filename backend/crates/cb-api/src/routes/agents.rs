@@ -30,7 +30,10 @@ pub async fn create_agent(
     }
 
     let agent = Agent::insert(&state.db, user_id.0, &req.name).await?;
-    Ok((StatusCode::CREATED, Json(AgentResponse::from_agent(agent, None))))
+    Ok((
+        StatusCode::CREATED,
+        Json(AgentResponse::from_agent(agent, None)),
+    ))
 }
 
 pub async fn list_agents(

@@ -273,7 +273,9 @@ pub async fn list_all_agents(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<AdminAgentResponse>>, ApiError> {
     let agents = Agent::list_all(&state.db).await?;
-    Ok(Json(agents.into_iter().map(AdminAgentResponse::from).collect()))
+    Ok(Json(
+        agents.into_iter().map(AdminAgentResponse::from).collect(),
+    ))
 }
 
 pub async fn admin_delete_agent(
@@ -309,7 +311,12 @@ pub async fn list_vps_configs(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<AdminVpsConfigResponse>>, ApiError> {
     let configs = VpsConfig::list_all(&state.db).await?;
-    Ok(Json(configs.into_iter().map(AdminVpsConfigResponse::from).collect()))
+    Ok(Json(
+        configs
+            .into_iter()
+            .map(AdminVpsConfigResponse::from)
+            .collect(),
+    ))
 }
 
 pub async fn create_vps_config(
@@ -327,7 +334,10 @@ pub async fn create_vps_config(
         req.disk_gb,
     )
     .await?;
-    Ok((StatusCode::CREATED, Json(AdminVpsConfigResponse::from(config))))
+    Ok((
+        StatusCode::CREATED,
+        Json(AdminVpsConfigResponse::from(config)),
+    ))
 }
 
 pub async fn update_vps_config(

@@ -230,7 +230,10 @@ pub async fn provider_for_vps<'a>(
 ) -> Result<(&'a Arc<dyn cb_infra::VpsProvider>, VpsConfig), ApiError> {
     let config = VpsConfig::get_by_id(&state.db, vps.vps_config_id).await?;
     let name: ProviderName = config.provider.parse().map_err(|_| {
-        ApiError::Internal(format!("unknown provider in VPS config: {}", config.provider))
+        ApiError::Internal(format!(
+            "unknown provider in VPS config: {}",
+            config.provider
+        ))
     })?;
     let provider = state
         .providers
