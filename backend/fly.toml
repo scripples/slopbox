@@ -23,6 +23,7 @@ primary_region = "iad"
 
   [[services.ports]]
     port = 3128
+    handlers = ["tls"]
 
 [env]
   LISTEN_ADDR = "0.0.0.0:8080"

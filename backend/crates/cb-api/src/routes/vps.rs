@@ -83,7 +83,7 @@ pub async fn provision_vps(
 
     // Proxy env vars — all outbound traffic flows through the control plane proxy
     let proxy_url = format!(
-        "http://{}:{}@{}",
+        "https://{}:{}@{}",
         agent.id, agent.gateway_token, state.config.proxy_external_addr
     );
     env.insert("HTTP_PROXY".into(), proxy_url.clone());
