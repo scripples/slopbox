@@ -7,8 +7,8 @@ ON CONFLICT DO NOTHING;
 
 -- VpsConfig for Hetzner (snapshot-based: image field holds snapshot ID, set via env/SQL)
 -- Uses cpx11 (2 vCPU, 2 GB RAM) with a pre-baked snapshot containing Docker + OpenClaw
-INSERT INTO vps_configs (name, provider, image, cpu_millicores, memory_mb, disk_gb)
-VALUES ('hetzner-small', 'hetzner', '358974785', 1000, 2048, 40)
+INSERT INTO vps_configs (name, provider, image, location, cpu_millicores, memory_mb, disk_gb)
+VALUES ('hetzner-small', 'hetzner', '358974785', 'ash', 1000, 2048, 40)
 ON CONFLICT DO NOTHING;
 
 -- Demo plan with generous limits (5 agents, 5 VPSes, 50 GB bandwidth)

@@ -5,7 +5,6 @@ CREATE TABLE vpses (
     user_id                UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     vps_config_id          UUID NOT NULL REFERENCES vps_configs(id),
     name                   TEXT NOT NULL,
-    provider               TEXT NOT NULL,           -- 'fly', 'hetzner', etc.
     provider_vm_id         TEXT,                    -- remote VM id from provider
     address                TEXT,                    -- private IP / internal DNS
     state                  vps_state NOT NULL DEFAULT 'provisioning',
