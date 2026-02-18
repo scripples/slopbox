@@ -256,6 +256,7 @@ pub struct User {
     pub email: String,
     pub name: Option<String>,
     pub plan_id: Option<Uuid>,
+    #[sqlx(rename = "emailVerified")]
     pub email_verified: Option<DateTime<Utc>>,
     pub image: Option<String>,
     pub role: UserRole,

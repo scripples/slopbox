@@ -6,7 +6,7 @@ CREATE TABLE users (
     email           TEXT NOT NULL UNIQUE,
     name            TEXT,
     plan_id         UUID REFERENCES plans(id) ON DELETE SET NULL,
-    email_verified  TIMESTAMPTZ,
+    "emailVerified"  TIMESTAMPTZ,
     image           TEXT,
     role            user_role   NOT NULL DEFAULT 'user',
     status          user_status NOT NULL DEFAULT 'pending',
