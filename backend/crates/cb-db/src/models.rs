@@ -333,18 +333,12 @@ pub struct OAuthAccount {
     pub provider: String,
     #[sqlx(rename = "providerAccountId")]
     pub provider_account_id: String,
-    #[sqlx(rename = "refreshToken")]
     pub refresh_token: Option<String>,
-    #[sqlx(rename = "accessToken")]
     pub access_token: Option<String>,
-    #[sqlx(rename = "expiresAt")]
-    pub expires_at: Option<i32>,
-    #[sqlx(rename = "tokenType")]
+    pub expires_at: Option<i64>,
     pub token_type: Option<String>,
     pub scope: Option<String>,
-    #[sqlx(rename = "idToken")]
     pub id_token: Option<String>,
-    #[sqlx(rename = "sessionState")]
     pub session_state: Option<String>,
 }
 
